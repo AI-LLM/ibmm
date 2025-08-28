@@ -5,7 +5,8 @@ from ibmm import to_mermaid_mindmap, to_mermaid_flowchart, summarize
 
 @Topic("Open Data Portal Project")
 class ODP:
-    """总体规划（mind map 部分）"""
+    """总体规划
+（mind map 部分）"""
 
     @Title #等价于@Title("Vision")
     class Vision:

@@ -232,7 +232,25 @@ def summarize():
     print("Nodes:", len(REGISTRY.nodes), kinds)
     print("Edges:", len(REGISTRY.edges))
 
-def to_mermaid_mindmap(root=None, show_text=False, text_max_len=80) -> str:
+def to_mermaid_mindmap(
+    root=None,
+    show_text=False,            # 当 text_mode='firstline' 时才生效
+    text_max_len=8000,
+    *,
+    text_mode: str = "inline",   # 'firstline' | 'inline' | 'children'
+    text_lines: int | None = None,  # 限制使用的 docstring 行数；None=全部
+    inline_sep: str = "<br>",        # text_mode='inline' 时的分隔符
+) -> str:
+    """
+    导出 Mermaid mindmap，支持多行 docstring。
+
+    text_mode:
+      - 'firstline'：只显示第一行（旧行为；受 show_text/text_max_len 控制）
+      - 'inline'   ：把多行合并为一行，用 inline_sep 连接（不支持 <br/>）
+      - 'children' ：把每一行作为“子节点”渲染（推荐在思维导图中表达多行）
+
+    text_lines: 限制 docstring 取前 N 行；None 表示全部非空行。
+    """
     REGISTRY.resolve_all()
 
     def _resolve_id(ref):
@@ -244,6 +262,7 @@ def to_mermaid_mindmap(root=None, show_text=False, text_max_len=80) -> str:
             return hits[0] if len(hits) == 1 else None
         return getattr(ref, "__qualname__", None)
 
+    # children 索引
     children = {}
     for n in REGISTRY.nodes.values():
         if n.parent:
@@ -251,24 +270,53 @@ def to_mermaid_mindmap(root=None, show_text=False, text_max_len=80) -> str:
     for k in children:
         children[k].sort(key=lambda i: (REGISTRY.nodes[i].kind, REGISTRY.nodes[i].title.lower()))
 
-    roots = [ _resolve_id(root) ] if _resolve_id(root) else \
+    roots = [_resolve_id(root)] if _resolve_id(root) else \
             sorted([nid for nid, n in REGISTRY.nodes.items() if not n.parent],
                    key=lambda i: REGISTRY.nodes[i].title.lower())
 
-    def snippet(txt: str) -> str:
-        if not show_text or not txt.strip(): return ""
-        head = txt.strip().splitlines()[0].strip()
-        if len(head) > text_max_len: head = head[:text_max_len-1] + "…"
-        return f": {head}" if head else ""
+    def _doc_lines(txt: str) -> list[str]:
+        lines = [ln.strip() for ln in (txt or "").splitlines()]
+        lines = [ln for ln in lines if ln]  # 去掉空行
+        if text_lines is not None:
+            lines = lines[:text_lines]
+        return lines
 
-    lines = ["mindmap"]
+    def _snippet_firstline(txt: str) -> str:
+        if not show_text: return ""
+        lines = _doc_lines(txt)
+        if not lines: return ""
+        head = lines[0]
+        if len(head) > text_max_len:
+            head = head[:text_max_len - 1] + "…"
+        return f": {head}"
+
+    lines_out = ["mindmap"]
     IND = "  "
-    def emit(nid: str, d: int):
+
+    def emit(nid: str, depth: int):
         n = REGISTRY.nodes[nid]
-        lines.append(f"{IND*d}{n.title}{snippet(n.text)}")
-        for cid in children.get(nid, []): emit(cid, d+1)
-    for r in roots: emit(r, 1)
-    return "\n".join(lines)
+        if text_mode == "firstline":
+            label = f"{n.title}{_snippet_firstline(n.text)}"
+            lines_out.append(f"{IND*depth}{label}")
+        elif text_mode == "inline":
+            doc = inline_sep.join(_doc_lines(n.text))
+            label = n.title if not doc else f"{n.title}: {doc}"
+            lines_out.append(f"{IND*depth}{label}")
+        elif text_mode == "children":
+            lines_out.append(f"{IND*depth}{n.title}")
+            for l in _doc_lines(n.text):
+                lines_out.append(f"{IND*(depth+1)}{l}")
+        else:
+            # 回退到旧行为
+            label = f"{n.title}{_snippet_firstline(n.text)}"
+            lines_out.append(f"{IND*depth}{label}")
+
+        for cid in children.get(nid, []):
+            emit(cid, depth + 1)
+
+    for r in roots:
+        emit(r, 1)
+    return "\n".join(lines_out)
 
 def to_mermaid_flowchart(
     root=None,
@@ -277,6 +325,8 @@ def to_mermaid_flowchart(
     wrap=28,
     node_styles: dict | None = None,
     edge_styles: dict | None = None,
+    *,
+    text_lines: int | None = None,    # 取 docstring 的前 N 行；None=全部
 ) -> str:
     """
     导出 Mermaid flowchart（可选自定义节点/边样式）。
@@ -293,6 +343,7 @@ def to_mermaid_flowchart(
           "relates":  "stroke:#6b7280,stroke-dasharray: 2 2;"
         }
         注意：我们已自动按输出顺序为每条边计算 linkStyle 编号，你无需关心 index。
+    text_lines : 取 docstring 的前 N 行；None=全部（默认），0=不显示（等价 show_text=False）。
     """
     import re
     REGISTRY.resolve_all()
@@ -327,7 +378,7 @@ def to_mermaid_flowchart(
     else:
         selected = set(REGISTRY.nodes.keys())
 
-    # --- 默认节点样式，可被 node_styles 覆盖/扩展 ---
+    # --- 样式（可被覆盖） ---
     default_node_styles = {
         "topic":    "fill:#eef6ff,stroke:#5b8,stroke-width:1px;",
         "title":    "fill:#f0f7ff,stroke:#69c,stroke-width:1px;",
@@ -342,12 +393,9 @@ def to_mermaid_flowchart(
     if node_styles:
         default_node_styles.update(node_styles)
 
-    # --- 输出节点 ---
-    def safe_id(qn: str) -> str:
-        return "n_" + re.sub(r"[^0-9A-Za-z_]", "_", qn)
-
-    def esc(s: str) -> str:
-        return s.replace("\\", "\\\\").replace('"', '\\"')
+    # --- 工具 ---
+    def safe_id(qn: str) -> str: return "n_" + re.sub(r"[^0-9A-Za-z_]", "_", qn)
+    def esc(s: str) -> str: return s.replace("\\", "\\\\").replace('"', '\\"')
 
     def wrap_html(s: str, width: int) -> str:
         if width <= 0: return s
@@ -361,21 +409,35 @@ def to_mermaid_flowchart(
         if cur: lines.append(cur)
         return "<br/>".join(lines)
 
+    def doc_as_html(txt: str) -> str:
+        if not show_text:
+            return ""
+        raw = [ln.strip() for ln in (txt or "").splitlines()]
+        raw = [ln for ln in raw if ln]  # 去空行
+        if text_lines == 0:
+            raw = []
+        elif text_lines is not None and text_lines > 0:
+            raw = raw[:text_lines]
+        if not raw:
+            return ""
+        # 每一行单独 wrap，然后用 <br/> 连接，保持段落结构
+        return "<br/>".join(wrap_html(ln, wrap) for ln in raw)
+
+    # --- 输出 ---
     lines = ["flowchart TD"]
     ordered_nodes = sorted(selected, key=lambda i: REGISTRY.nodes[i].title.lower())
 
     for nid in ordered_nodes:
         n = REGISTRY.nodes[nid]
         label = n.title
-        if show_text and n.text.strip():
-            head = n.text.strip().splitlines()[0].strip()
-            if head:
-                label = label + "<br/>" + wrap_html(head, wrap)
+        more = doc_as_html(n.text)
+        if more:
+            label = label + "<br/>" + more
         rounded = n.kind in ("topic", "title", "node", "note")
         br_l, br_r = ("(", ")") if rounded else ("[", "]")
         lines.append(f'{safe_id(nid)}{br_l}"{esc(label)}"{br_r}')
 
-    # classDef（按已出现的 kind 输出，允许被用户覆盖）
+    # classDef
     present_kinds = {REGISTRY.nodes[nid].kind for nid in ordered_nodes}
     for kind in present_kinds:
         style = default_node_styles.get(kind)
@@ -384,14 +446,11 @@ def to_mermaid_flowchart(
     for nid in ordered_nodes:
         lines.append(f"class {safe_id(nid)} {REGISTRY.nodes[nid].kind};")
 
-    # --- 输出边，并按 relation 应用 linkStyle ---
+    # 边
     def edge_line(e):
         a, b = safe_id(e.src), safe_id(e.dst)
-        if e.rel == "contains":
-            return f"{a} --> {b}"
-        if e.rel == "relates":
-            # 仍保持关系名显示；样式可再由 linkStyle 覆盖
-            return f"{a} -. relates .-> {b}"
+        if e.rel == "contains": return f"{a} --> {b}"
+        if e.rel == "relates":  return f"{a} -. relates .-> {b}"
         return f'{a} -- "{e.rel}" --> {b}'
 
     selected_edges = [
@@ -400,12 +459,12 @@ def to_mermaid_flowchart(
     ]
     selected_edges.sort(key=lambda e: (0 if e.rel == "contains" else 1, e.rel, e.src, e.dst))
 
+    # linkStyle
     linkstyle_lines = []
     edge_idx = 0
     for e in selected_edges:
         lines.append(edge_line(e))
         if edge_styles and (style := edge_styles.get(e.rel)):
-            # Mermaid 的 linkStyle 按“边定义顺序”编号；此处自动管理 index
             linkstyle_lines.append(f"linkStyle {edge_idx} {style}")
         edge_idx += 1
 

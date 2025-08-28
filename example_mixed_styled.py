@@ -1,4 +1,4 @@
-from ibmm import to_mermaid_flowchart
+from ibmm import to_mermaid_flowchart, to_mermaid_mindmap
 import graphs.example_mixed  # 只要 import 就会注册节点/边
 
 node_styles = {
@@ -17,10 +17,14 @@ edge_styles = {
 }
 
 print(to_mermaid_flowchart(
-    "OS_Question",
+    None,#"OS_Question",
     include=("contains","answers","supports","opposes","relates"),
     show_text=True,
     wrap=28,
     node_styles=node_styles,
     edge_styles=edge_styles,
+))
+
+print(to_mermaid_mindmap(
+    None
 ))
