@@ -270,9 +270,31 @@ def to_mermaid_mindmap(root=None, show_text=False, text_max_len=80) -> str:
     for r in roots: emit(r, 1)
     return "\n".join(lines)
 
-def to_mermaid_flowchart(root=None,
-                         include=("contains","answers","supports","opposes","relates"),
-                         show_text=True, wrap=28) -> str:
+def to_mermaid_flowchart(
+    root=None,
+    include=("contains", "answers", "supports", "opposes", "relates"),
+    show_text=True,
+    wrap=28,
+    node_styles: dict | None = None,
+    edge_styles: dict | None = None,
+) -> str:
+    """
+    导出 Mermaid flowchart（可选自定义节点/边样式）。
+
+    参数
+    ----
+    node_styles : 映射 {kind: "Mermaid classDef 样式串"}
+        例如: {"issue": "fill:#fff2cc,stroke:#cc7a00,stroke-width:1.5px;"}
+    edge_styles : 映射 {rel: "Mermaid linkStyle 样式串"}
+        例如: {
+          "supports": "stroke:#16a34a,stroke-width:2px;",
+          "opposes":  "stroke:#dc2626,stroke-width:2px;",
+          "answers":  "stroke:#2563eb,stroke-width:1.5px,stroke-dasharray: 4 2;",
+          "relates":  "stroke:#6b7280,stroke-dasharray: 2 2;"
+        }
+        注意：我们已自动按输出顺序为每条边计算 linkStyle 编号，你无需关心 index。
+    """
+    import re
     REGISTRY.resolve_all()
 
     def _resolve_id(ref):
@@ -283,17 +305,20 @@ def to_mermaid_flowchart(root=None,
             hits = [k for k in REGISTRY.nodes if k.endswith(f".{tail}") or k == tail]
             return hits[0] if len(hits) == 1 else None
         return getattr(ref, "__qualname__", None)
+
     rid = _resolve_id(root) if root else None
 
-    # gather children
+    # --- 子树选择 ---
     children = {}
     for n in REGISTRY.nodes.values():
-        if n.parent: children.setdefault(n.parent, []).append(n.id)
+        if n.parent:
+            children.setdefault(n.parent, []).append(n.id)
     for k in children:
         children[k].sort(key=lambda i: (REGISTRY.nodes[i].kind, REGISTRY.nodes[i].title.lower()))
 
     if rid:
-        selected = set(); stack = [rid]
+        selected = set()
+        stack = [rid]
         while stack:
             cur = stack.pop()
             if cur in selected: continue
@@ -302,49 +327,87 @@ def to_mermaid_flowchart(root=None,
     else:
         selected = set(REGISTRY.nodes.keys())
 
-    def safe_id(qn: str) -> str: return "n_" + re.sub(r"[^0-9A-Za-z_]", "_", qn)
-    def esc(s: str) -> str: return s.replace("\\", "\\\\").replace('"', '\\"')
+    # --- 默认节点样式，可被 node_styles 覆盖/扩展 ---
+    default_node_styles = {
+        "topic":    "fill:#eef6ff,stroke:#5b8,stroke-width:1px;",
+        "title":    "fill:#f0f7ff,stroke:#69c,stroke-width:1px;",
+        "node":     "fill:#ffffff,stroke:#bbb,stroke-width:1px;",
+        "note":     "fill:#f7f7f7,stroke:#999,stroke-width:1px;",
+        "issue":    "fill:#fff6e5,stroke:#d48,stroke-width:1px;",
+        "position": "fill:#f3ffef,stroke:#5a5,stroke-width:1px;",
+        "pro":      "fill:#eafff3,stroke:#5a5,stroke-width:1px;",
+        "con":      "fill:#ffefef,stroke:#d55,stroke-width:1px;",
+        "question": "fill:#fff,stroke:#888,stroke-dasharray: 4 2;",
+    }
+    if node_styles:
+        default_node_styles.update(node_styles)
+
+    # --- 输出节点 ---
+    def safe_id(qn: str) -> str:
+        return "n_" + re.sub(r"[^0-9A-Za-z_]", "_", qn)
+
+    def esc(s: str) -> str:
+        return s.replace("\\", "\\\\").replace('"', '\\"')
+
     def wrap_html(s: str, width: int) -> str:
         if width <= 0: return s
-        words = s.split(); lines, cur = [], ""
+        words = s.split()
+        lines, cur = [], ""
         for w in words:
-            if len(cur) + len(w) + (1 if cur else 0) > width: lines.append(cur); cur = w
-            else: cur = w if not cur else (cur + " " + w)
-        if cur: lines.append(cur); return "<br/>".join(lines)
+            if len(cur) + len(w) + (1 if cur else 0) > width:
+                lines.append(cur); cur = w
+            else:
+                cur = w if not cur else (cur + " " + w)
+        if cur: lines.append(cur)
+        return "<br/>".join(lines)
 
     lines = ["flowchart TD"]
     ordered_nodes = sorted(selected, key=lambda i: REGISTRY.nodes[i].title.lower())
+
     for nid in ordered_nodes:
         n = REGISTRY.nodes[nid]
         label = n.title
         if show_text and n.text.strip():
             head = n.text.strip().splitlines()[0].strip()
-            if head: label = label + "<br/>" + wrap_html(head, wrap)
-        # 形状：mind-map类圆角，其他矩形
-        rounded = n.kind in ("topic","title","node","note")
+            if head:
+                label = label + "<br/>" + wrap_html(head, wrap)
+        rounded = n.kind in ("topic", "title", "node", "note")
         br_l, br_r = ("(", ")") if rounded else ("[", "]")
         lines.append(f'{safe_id(nid)}{br_l}"{esc(label)}"{br_r}')
-    lines += [
-        "classDef topic fill:#eef6ff,stroke:#5b8,stroke-width:1px;",
-        "classDef title fill:#f0f7ff,stroke:#69c,stroke-width:1px;",
-        "classDef node fill:#ffffff,stroke:#bbb,stroke-width:1px;",
-        "classDef note fill:#f7f7f7,stroke:#999,stroke-width:1px;",
-        "classDef issue fill:#fff6e5,stroke:#d48,stroke-width:1px;",
-        "classDef position fill:#f3ffef,stroke:#5a5,stroke-width:1px;",
-        "classDef pro fill:#eafff3,stroke:#5a5,stroke-width:1px;",
-        "classDef con fill:#ffefef,stroke:#d55,stroke-width:1px;",
-        "classDef question fill:#fff,stroke:#888,stroke-dasharray: 4 2;",
-    ]
+
+    # classDef（按已出现的 kind 输出，允许被用户覆盖）
+    present_kinds = {REGISTRY.nodes[nid].kind for nid in ordered_nodes}
+    for kind in present_kinds:
+        style = default_node_styles.get(kind)
+        if style:
+            lines.append(f"classDef {kind} {style}")
     for nid in ordered_nodes:
         lines.append(f"class {safe_id(nid)} {REGISTRY.nodes[nid].kind};")
 
-    def edge_line(e: Edge) -> str:
+    # --- 输出边，并按 relation 应用 linkStyle ---
+    def edge_line(e):
         a, b = safe_id(e.src), safe_id(e.dst)
-        if e.rel == "contains": return f"{a} --> {b}"
-        if e.rel == "relates":  return f"{a} -. relates .-> {b}"
+        if e.rel == "contains":
+            return f"{a} --> {b}"
+        if e.rel == "relates":
+            # 仍保持关系名显示；样式可再由 linkStyle 覆盖
+            return f"{a} -. relates .-> {b}"
         return f'{a} -- "{e.rel}" --> {b}'
 
-    selected_edges = [e for e in REGISTRY.edges if e.rel in include and e.src in selected and e.dst in selected]
-    selected_edges.sort(key=lambda e: (0 if e.rel=="contains" else 1, e.rel, e.src, e.dst))
-    for e in selected_edges: lines.append(edge_line(e))
+    selected_edges = [
+        e for e in REGISTRY.edges
+        if e.rel in include and e.src in selected and e.dst in selected
+    ]
+    selected_edges.sort(key=lambda e: (0 if e.rel == "contains" else 1, e.rel, e.src, e.dst))
+
+    linkstyle_lines = []
+    edge_idx = 0
+    for e in selected_edges:
+        lines.append(edge_line(e))
+        if edge_styles and (style := edge_styles.get(e.rel)):
+            # Mermaid 的 linkStyle 按“边定义顺序”编号；此处自动管理 index
+            linkstyle_lines.append(f"linkStyle {edge_idx} {style}")
+        edge_idx += 1
+
+    lines.extend(linkstyle_lines)
     return "\n".join(lines)
