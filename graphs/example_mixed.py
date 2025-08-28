@@ -5,10 +5,7 @@ from ibmm import to_mermaid_mindmap, to_mermaid_flowchart, summarize
 
 @Topic("Open Data Portal Project")
 class ODP:
-    """总体规划
-（mind map 部分）
-[Google](http://google.com) ![](https://github.githubassets.com/assets/mona-loading-default-c3c7aad1282f.gif)
-"""
+    """总体规划（mind map 部分）"""
 
     @Title #等价于@Title("Vision")
     class Vision:
@@ -35,7 +32,10 @@ class Gov_Sponsors:
 # ===== IBIS 问题与立场（同时允许像 mind map 一样展开）=====
 @Issue("Should we open-source the portal stack?")
 class OS_Question:
-    """是否将门户技术栈开源？"""
+    """是否将门户技术栈开源？
+    [Github](http://github.com)
+    ![](https://github.githubassets.com/assets/mona-loading-default-c3c7aad1282f.gif)
+    """
 
     @Position
     class Yes:

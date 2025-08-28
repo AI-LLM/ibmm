@@ -124,7 +124,7 @@ def make_kind(kind: str):
         if dargs and callable(dargs[0]):  # @Kind
             c = dargs[0]; title = dkwargs.pop("title", None)
             return apply(c, title=title, **dkwargs)
-        # 情况 B：@Kind("标题", ...) 返回真正装饰器    
+        # 情况 B：@Kind("标题", ...) 返回真正装饰器
         title_pos = dargs[0] if dargs else None
         title_kw  = dkwargs.pop("title", None)
         title = title_kw if title_kw is not None else title_pos
@@ -323,7 +323,7 @@ def _md_to_text_line(raw: str) -> str:
     # 自动链接（保持原样）
     # （这里不包 <a>，mindmap 不吃 HTML）
     return s.strip()
-    
+
 def to_mermaid_mindmap(
     root=None,
     show_text=False,            # 当 text_mode='firstline' 时才生效
@@ -337,6 +337,7 @@ def to_mermaid_mindmap(
     """
     导出 Mermaid mindmap，支持多行 docstring。
 
+    若 root 为 None：自动选择“后代节点最多”的顶层根（只输出这一个根）。
     text_mode:
       - 'firstline'：只显示第一行（旧行为；受 show_text/text_max_len 控制）
       - 'inline'   ：把多行合并为一行，用 inline_sep 连接（不支持 <br/>）
@@ -363,21 +364,36 @@ def to_mermaid_mindmap(
     for k in children:
         children[k].sort(key=lambda i: (REGISTRY.nodes[i].kind, REGISTRY.nodes[i].title.lower()))
 
-    roots = [_resolve_id(root)] if _resolve_id(root) else \
-            sorted([nid for nid, n in REGISTRY.nodes.items() if not n.parent],
-                   key=lambda i: REGISTRY.nodes[i].title.lower())
+    # 选根：root 指定则用之；否则选“后代最多”的顶层根
+    rid = _resolve_id(root) if root else None
+    if rid is None:
+        top_roots = [nid for nid, n in REGISTRY.nodes.items() if not n.parent]
+        if not top_roots:
+            return "mindmap"
+        def subtree_size(nid: str) -> int:
+            cnt = 0
+            stack = list(children.get(nid, []))
+            while stack:
+                x = stack.pop()
+                cnt += 1
+                stack.extend(children.get(x, []))
+            return cnt
+        rid = max(
+            top_roots,
+            key=lambda nid: (subtree_size(nid), REGISTRY.nodes[nid].title.lower())
+        )
 
+    # 文本处理
     def _doc_lines(txt: str) -> list[str]:
-        lines = [ln.strip() for ln in (txt or "").splitlines()]
-        lines = [ln for ln in lines if ln]  # 去掉空行
+        arr = [ln.strip() for ln in (txt or "").splitlines()]
+        arr = [ln for ln in arr if ln]
         if text_lines is not None:
-            lines = lines[:text_lines]
-        return lines
+            arr = arr[:text_lines]
+        return arr
 
     def _render_line(ln: str) -> str:
-        # mindmap 对 HTML 支持弱；md='text' 最稳妥
         if md == "html":
-            # 直接用 flowchart 的 HTML 转换器；属性为单引号
+            # 注意：mindmap 对 HTML 支持有限；不同渲染器表现可能不同
             return _md_to_html_line(ln)
         return _md_to_text_line(ln)
 
@@ -390,6 +406,7 @@ def to_mermaid_mindmap(
             first = first[:text_max_len - 1] + "…"
         return f": {first}"
 
+    # 输出
     lines_out = ["mindmap"]
     IND = "  "
 
@@ -407,17 +424,15 @@ def to_mermaid_mindmap(
             for l in _doc_lines(n.text):
                 lines_out.append(f"{IND*(depth+1)}{_render_line(l)}")
         else:
-            # 回退
             label = f"{n.title}{_firstline_snippet(n.text)}"
             lines_out.append(f"{IND*depth}{label}")
 
         for cid in children.get(nid, []):
             emit(cid, depth + 1)
 
-    for r in roots:
-        emit(r, 1)
+    emit(rid, 1)
     return "\n".join(lines_out)
-    
+
 def to_mermaid_flowchart(
     root=None,
     include=("contains", "answers", "supports", "opposes", "relates"),
