@@ -106,9 +106,11 @@ def _parent_of(qn: str) -> Optional[str]:
     return qn.rsplit(".", 1)[0] if "." in qn else None
 
 def _title(obj, explicit: Optional[str]) -> str:
+    # 没给标题就用类名，且将下划线转为空格
     return explicit if explicit is not None else obj.__name__.replace("_", " ")
 
 def make_kind(kind: str):
+    """创建一个节点装饰器，既支持 @Kind 也支持 @Kind('标题', ...)。"""
     def apply(c, title: Optional[str] = None, **meta):
         qn = c.__qualname__
         REGISTRY.add_node(Node(
@@ -118,9 +120,11 @@ def make_kind(kind: str):
         for binder in PROXY_BINDERS: binder(c, qn)
         return c
     def deco(*dargs, **dkwargs):
+        # 情况 A：@Kind 直接装饰类（无参）
         if dargs and callable(dargs[0]):  # @Kind
             c = dargs[0]; title = dkwargs.pop("title", None)
             return apply(c, title=title, **dkwargs)
+        # 情况 B：@Kind("标题", ...) 返回真正装饰器    
         title_pos = dargs[0] if dargs else None
         title_kw  = dkwargs.pop("title", None)
         title = title_kw if title_kw is not None else title_pos

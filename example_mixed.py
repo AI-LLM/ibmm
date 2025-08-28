@@ -1,5 +1,5 @@
 # example_mixed.py
-from ibmm import Topic, Title, NodeKind, Note, ___
+from ibmm import Topic, Title, Note, NodeKind, ___
 from ibmm import Issue, Position, Pro, Con, supports, opposes, answers
 from ibmm import to_mermaid_mindmap, to_mermaid_flowchart, summarize
 
@@ -7,25 +7,25 @@ from ibmm import to_mermaid_mindmap, to_mermaid_flowchart, summarize
 class ODP:
     """总体规划（mind map 部分）"""
 
-    @Title("Vision")
+    @Title #等价于@Title("Vision")
     class Vision:
         """开放数据促进创新与透明。"""
         +___.Gov_Sponsors.Strategy  # 纯关联
 
-    @Title("Workstreams")
+    @Title
     class Workstreams:
-        @NodeKind("Ingestion")
+        @Title
         class Ingestion: """数据接入与标准化"""
-        @NodeKind("Catalog")
+        @Title
         class Catalog:   """元数据目录与搜索"""
-        @NodeKind("API")
+        @Note
         class API:       """开放 API 与限流"""
-        @NodeKind("Apps")
+        @NodeKind
         class Apps:      """示范应用与生态"""
 
 @Topic("Government Stakeholders")
 class Gov_Sponsors:
-    @Title("Strategy")
+    @Title
     class Strategy:
         """开放政府、数字化转型、法规配套。"""
 
@@ -34,16 +34,16 @@ class Gov_Sponsors:
 class OS_Question:
     """是否将门户技术栈开源？"""
 
-    @Position("Yes")
+    @Position
     class Yes:
         """赞成：生态协作、透明与信任。"""
 
         # mind map 式展开
-        @Title("Rationale")
+        @Title
         class Rationale:
-            @NodeKind("Ecosystem")
+            @Title
             class Ecosystem: """吸引开发者与高校合作"""
-            @NodeKind("Trust")
+            @Note
             class Trust:     """公众与企业更信任"""
 
         @Pro
@@ -58,15 +58,15 @@ class OS_Question:
             # Con → Position（或其后代），都合法
             +opposes.OS_Question.Yes
 
-    @Position("No")
+    @Position
     class No:
         """反对：控制与合规优先。"""
 
-        @Title("Concerns")
+        @Title
         class Concerns:
-            @NodeKind("Security")
+            @Title
             class Security: """供应链与攻击面风险"""
-            @NodeKind("Compliance")
+            @Title
             class Compliance: """合规审计压力"""
 
         @Pro
@@ -88,6 +88,8 @@ class Hybrid:
 if __name__ == "__main__":
     print("=== Mermaid Mindmap (root: ODP) ===")
     print(to_mermaid_mindmap(ODP, show_text=True))
+    print("=== Mermaid Flowchart (root: ODP) ===")
+    print(to_mermaid_flowchart(ODP, show_text=True))
     print("\n=== Mermaid Flowchart (root: OS_Question) ===")
     print(to_mermaid_flowchart("OS_Question",
                                include=("contains","answers","supports","opposes","relates"),
