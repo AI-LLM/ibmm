@@ -9,6 +9,9 @@
     header { padding:10px 14px; background:#0f172a; color:#e2e8f0; display:flex; gap:12px; align-items:center; }
     header b { color:#fff; }
     main { padding:16px; }
+    .button-group { margin-bottom:16px; display:flex; gap:8px; }
+    .button-group button { padding:8px 16px; border-radius:6px; border:1px solid #e5e7eb; background:#f9fafb; cursor:pointer; font-weight:500; }
+    .button-group button.active { background:#0f172a; color:#fff; border-color:#0f172a; }
     #mermaid { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:16px; overflow:auto; }
     #error  { background:#111827; color:#fca5a5; border-radius:12px; padding:16px; overflow:auto; display:none; white-space:pre; }
   </style>
@@ -30,14 +33,19 @@
   </py-config>
 </head>
 <body>
-  <header><b>IBMM</b><span>&nbsp;· Issue-Based Mind Map preview (SSE-ready)</span></header>
+  <header><b>IBMM</b><span>&nbsp;· Issue-Based Mind Map preview</span></header>
   <main>
+    <div class="button-group">
+      <button id="chart-btn" class="active">Flowchart</button>
+      <button id="mindmap-btn">Mindmap</button>
+    </div>
     <div id="mermaid">Loading…</div>
     <pre id="error"></pre>
   </main>
 
   <script type="py">
 from js import document, window, mermaid, EventSource
+from pyodide.ffi import create_proxy
 import importlib, sys, traceback
 
 def show_error():
@@ -46,7 +54,21 @@ def show_error():
     el.style.display = "block"
     document.getElementById("mermaid").textContent = ""
 
-def render(graph_mod: str):
+# 当前视图类型
+current_view = "flowchart"  # "flowchart" or "mindmap"
+
+def render_mermaid_diagram(mmd_code):
+    """渲染 Mermaid 图表"""
+    box = document.getElementById("mermaid")
+    # 清空并重新设置内容，使用 innerHTML 以确保完全清空
+    box.innerHTML = ""
+    # 创建新的 pre 元素包含 mermaid 代码
+    box.innerHTML = f'<pre class="mermaid">{mmd_code}</pre>'
+    # 使用 mermaid.run() 重新渲染所有 .mermaid 元素
+    mermaid.run()
+    document.getElementById("error").style.display = "none"
+
+def render_flowchart(graph_mod: str):
     try:
         import ibmm
         importlib.invalidate_caches()
@@ -70,16 +92,32 @@ def render(graph_mod: str):
         mmd = ibmm.to_mermaid_flowchart(
             root=None,
             include=("contains","answers","supports","opposes","relates"),
-            show_text=True, 
+            show_text=True,
             node_styles=node_styles,
             edge_styles=edge_styles,
         )
-        box = document.getElementById("mermaid")
-        box.textContent = mmd
-        mermaid.init(None, box)
-        document.getElementById("error").style.display = "none"
+        render_mermaid_diagram(mmd)
     except Exception:
         show_error()
+
+def render_mindmap(graph_mod: str):
+    try:
+        import ibmm
+        importlib.invalidate_caches()
+        importlib.import_module(graph_mod)  # 只 import 即注册节点/边
+
+        mmd = ibmm.to_mermaid_mindmap(
+            root=None
+        )
+        render_mermaid_diagram(mmd)
+    except Exception:
+        show_error()
+
+def render(graph_mod: str):
+    if current_view == "flowchart":
+        render_flowchart(graph_mod)
+    else:
+        render_mindmap(graph_mod)
 
 # 支持 ?graph=graphs.example_mixed 或 graphs/example_mixed.py
 qs = window.location.search or ""
@@ -90,6 +128,37 @@ if qs.startswith("?"):
             k,v = part.split("=",1); params[k]=v
 graph = params.get("graph") or "graphs.example_mixed"
 if graph.endswith(".py"): graph = graph[:-3].replace("/", ".")
+
+# 设置按钮事件监听器
+def set_active_button(active_id):
+    chart_btn = document.getElementById("chart-btn")
+    mindmap_btn = document.getElementById("mindmap-btn")
+
+    chart_btn.classList.remove("active")
+    mindmap_btn.classList.remove("active")
+
+    document.getElementById(active_id).classList.add("active")
+
+def on_chart_click(event):
+    global current_view
+    current_view = "flowchart"
+    set_active_button("chart-btn")
+    render(graph)
+
+def on_mindmap_click(event):
+    global current_view
+    current_view = "mindmap"
+    set_active_button("mindmap-btn")
+    render(graph)
+
+# 使用 create_proxy 创建持久的回调函数代理
+chart_click_proxy = create_proxy(on_chart_click)
+mindmap_click_proxy = create_proxy(on_mindmap_click)
+
+document.getElementById("chart-btn").addEventListener("click", chart_click_proxy)
+document.getElementById("mindmap-btn").addEventListener("click", mindmap_click_proxy)
+
+# 初始渲染
 render(graph)
 
 # 可选：SSE 热刷新（静态托管无 /events 时就连不上，页面照常工作）
