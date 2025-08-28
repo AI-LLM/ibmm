@@ -40,18 +40,23 @@ class Registry:
     def __init__(self):
         self.nodes: Dict[str, Node] = {}
         self.edges: List[Edge] = []
+        self._edge_set: set[tuple[str, str, str]] = set()   # ← 新增：去重用
         self._pending: List[_Pending] = []
 
     # 节点/边
     def add_node(self, n: Node):
         self.nodes[n.id] = n
         if n.parent:
-            self.edges.append(Edge(n.parent, n.id, "contains"))
+            self.add_edge(n.parent, n.id, "contains")  # ← 用 add_edge，而不是直接 append
 
     def defer(self, src_ref: Any, dst_ref: Any, rel: str, origin: Optional[tuple[str,int]] = None):
         self._pending.append(_Pending(src_ref, dst_ref, rel, origin))
 
     def add_edge(self, src: str, dst: str, rel: str):
+        key = (src, dst, rel)
+        if key in self._edge_set:
+            return
+        self._edge_set.add(key)
         self.edges.append(Edge(src, dst, rel))
 
     # 解析
@@ -86,8 +91,10 @@ class Registry:
         for fn in FINALIZERS:
             fn(self)
 
+        # 把当前待处理边拿出来处理，然后清空队列，避免重复追加
+        pendings, self._pending = self._pending, []
         # 解析延迟边 + 规则校验
-        for p in self._pending:
+        for p in pendings:
             src = self._resolve_ref(p.src_ref) or (
                 p.src_ref if isinstance(p.src_ref, str) else getattr(p.src_ref, "__qualname__", None)
             )

@@ -16,14 +16,24 @@ edge_styles = {
     # "contains": "stroke:#999,stroke-width:1px;"  # 如需也可加
 }
 
-print(to_mermaid_flowchart(
+print("="*20)
+s1 = to_mermaid_flowchart(
     None,#"OS_Question",
     include=("contains","answers","supports","opposes","relates"),
     show_text=True,
     node_styles=node_styles,
     edge_styles=edge_styles,
-))
-
+)
+print(s1)
+s2 = to_mermaid_flowchart(
+    None,#"OS_Question",
+    include=("contains","answers","supports","opposes","relates"),
+    show_text=True,
+    node_styles=node_styles,
+    edge_styles=edge_styles,
+)
+assert s1 == s2, "重复导出内容应完全一致"
+print("="*20)
 print(to_mermaid_mindmap(
     None
 ))
