@@ -33,7 +33,7 @@ class AI_Learn:
             class Data_Moat:
                 """专有学习过程数据与标注体系。"""
                 # 与 AI 能力中的 RAG 强关联
-                ___("AI_Learn.Product.AI_Capabilities.RAG") #前向引用用字符串
+                ___("AI_Learn.Product.AI_Capabilities.RAG") #向下引用，通过字符串
 
             @Topic("Distribution")
             class Distribution:
@@ -42,7 +42,7 @@ class AI_Learn:
             @Topic("Pedagogy")
             class Pedagogy:
                 """以学习科学为支撑的教学设计（检索练习、间隔复习等）。"""
-                ___("AI_Learn.Product.Core.Assessment")
+                ___(lambda: AI_Learn.Product.Core.Assessment) #向下引用
 
     @Topic("产品")
     class Product:
@@ -148,6 +148,7 @@ class AI_Learn:
         # 指标与产品模块的互相关联
         North_Star.___("AI_Learn.Product.Core.Planner")
         Retention.___("AI_Learn.GTM.Pricing")
+    ___(AI_Learn.GTM.Pricing)
 
 # 可选小结（无需输出也行）
 if __name__ == "__main__":
