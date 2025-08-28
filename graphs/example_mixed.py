@@ -6,7 +6,9 @@ from ibmm import to_mermaid_mindmap, to_mermaid_flowchart, summarize
 @Topic("Open Data Portal Project")
 class ODP:
     """总体规划
-（mind map 部分）"""
+（mind map 部分）
+[Google](http://google.com) ![](https://github.githubassets.com/assets/mona-loading-default-c3c7aad1282f.gif)
+"""
 
     @Title #等价于@Title("Vision")
     class Vision:
@@ -94,6 +96,6 @@ if __name__ == "__main__":
     print("\n=== Mermaid Flowchart (root: OS_Question) ===")
     print(to_mermaid_flowchart("OS_Question",
                                include=("contains","answers","supports","opposes","relates"),
-                               show_text=True, wrap=30))
+                               show_text=True))
     print()
     summarize()

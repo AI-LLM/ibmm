@@ -70,7 +70,7 @@ def render(graph_mod: str):
         mmd = ibmm.to_mermaid_flowchart(
             root=None,
             include=("contains","answers","supports","opposes","relates"),
-            show_text=True, wrap=30,
+            show_text=True, 
             node_styles=node_styles,
             edge_styles=edge_styles,
         )

@@ -20,7 +20,6 @@ print(to_mermaid_flowchart(
     None,#"OS_Question",
     include=("contains","answers","supports","opposes","relates"),
     show_text=True,
-    wrap=28,
     node_styles=node_styles,
     edge_styles=edge_styles,
 ))

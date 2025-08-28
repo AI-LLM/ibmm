@@ -232,6 +232,98 @@ def summarize():
     print("Nodes:", len(REGISTRY.nodes), kinds)
     print("Edges:", len(REGISTRY.edges))
 
+# ---- Markdown -> HTML (极简) ----
+import re as _re
+def _escape_basic(s: str) -> str:
+    # 仅做基础 HTML 转义，后续会插入我们生成的 <a>/<img> 等标签
+    return (
+        s.replace("&", "&amp;")
+         .replace("<", "&lt;")
+         .replace(">", "&gt;")
+         .replace('"', "&quot;")
+         .replace("'", "&#39;")
+    )
+
+def _md_to_html_line(raw: str) -> str:
+    """
+    把单行 Markdown 转成适合 Mermaid label 的 HTML 片段：
+    - 链接   [text](url)  -> <a href='url' target='_blank' rel='noopener noreferrer'>text</a>
+    - 图片   ![alt](url)  -> <img src='url' alt='alt'/>
+    - 粗体   **text**     -> <b>text</b>
+    - 斜体   *text*       -> <i>text</i>
+    - 代码   `code`       -> <code>code</code>
+    - 自动链接 http(s)://... -> <a href='url' ...>url</a>
+    注意：先整体转义，再做替换，保证安全；标签属性用单引号，避免 Mermaid 语法冲突。
+    """
+    s = _escape_basic(raw or "")
+
+    # 图片：先替换，避免被链接规则吞掉
+    def _img_sub(m):
+        alt = m.group(1)
+        url = m.group(2)
+        return f"<img src='{url}' alt='{alt}'/>"
+    s = _re.sub(r'!\[([^\]]*)\]\(([^)]+)\)', _img_sub, s)
+
+    # 链接
+    def _link_sub(m):
+        text = m.group(1)
+        url  = m.group(2)
+        return f"<a href='{url}' target='_blank' rel='noopener noreferrer'>{text}</a>"
+    s = _re.sub(r'\[([^\]]+)\]\(([^)]+)\)', _link_sub, s)
+
+    # 行内代码
+    s = _re.sub(r'`([^`]+)`', r'<code>\1</code>', s)
+
+    # 粗体（先于斜体）
+    s = _re.sub(r'\*\*([^*]+)\*\*', r'<b>\1</b>', s)
+
+    # 斜体（简单处理，尽量避免与粗体冲突）
+    s = _re.sub(r'(?<!\*)\*([^*]+)\*(?!\*)', r'<i>\1</i>', s)
+
+    # 自动链接（避免命中已经生成的标签内的 url）
+    def _auto_link(m):
+        url = m.group(0)
+        return f"<a href='{url}' target='_blank' rel='noopener noreferrer'>{url}</a>"
+    s = _re.sub(r'(?<!["\'=])(https?://[^\s<]+)', _auto_link, s)
+
+    return s
+
+def _md_to_text_line(raw: str) -> str:
+    """
+    把单行 Markdown 转为 mindmap 友好的纯文本：
+    - ![alt](url)   ->  🖼 alt (url)
+    - [text](url)   ->  text (url)
+    - **bold**      ->  bold
+    - *italic*      ->  italic
+    - `code`        ->  ‹code›
+    - 自动链接      ->  url
+    """
+    s = raw or ""
+
+    # 图片：先处理，避免被链接规则吞掉
+    def _img(m):
+        alt, url = m.group(1), m.group(2)
+        return f"🖼 {alt} ({url})" if alt else f"🖼 ({url})"
+    s = _re.sub(r'!\[([^\]]*)\]\(([^)]+)\)', _img, s)
+
+    # 链接
+    def _lnk(m):
+        text, url = m.group(1), m.group(2)
+        text = text.strip() or url
+        return f"{text} ({url})"
+    s = _re.sub(r'\[([^\]]+)\]\(([^)]+)\)', _lnk, s)
+
+    # 行内代码 -> ‹code›
+    s = _re.sub(r'`([^`]+)`', r'‹\1›', s)
+
+    # 粗体/斜体：去掉标记
+    s = _re.sub(r'\*\*([^*]+)\*\*', r'\1', s)                       # **bold**
+    s = _re.sub(r'(?<!\*)\*([^*]+)\*(?!\*)', r'\1', s)              # *italic*
+
+    # 自动链接（保持原样）
+    # （这里不包 <a>，mindmap 不吃 HTML）
+    return s.strip()
+    
 def to_mermaid_mindmap(
     root=None,
     show_text=False,            # 当 text_mode='firstline' 时才生效
@@ -240,6 +332,7 @@ def to_mermaid_mindmap(
     text_mode: str = "inline",   # 'firstline' | 'inline' | 'children'
     text_lines: int | None = None,  # 限制使用的 docstring 行数；None=全部
     inline_sep: str = "<br>",        # text_mode='inline' 时的分隔符
+    md: str = "html",             # 'text'或 'html'（默认）
 ) -> str:
     """
     导出 Mermaid mindmap，支持多行 docstring。
@@ -281,14 +374,21 @@ def to_mermaid_mindmap(
             lines = lines[:text_lines]
         return lines
 
-    def _snippet_firstline(txt: str) -> str:
+    def _render_line(ln: str) -> str:
+        # mindmap 对 HTML 支持弱；md='text' 最稳妥
+        if md == "html":
+            # 直接用 flowchart 的 HTML 转换器；属性为单引号
+            return _md_to_html_line(ln)
+        return _md_to_text_line(ln)
+
+    def _firstline_snippet(txt: str) -> str:
         if not show_text: return ""
-        lines = _doc_lines(txt)
-        if not lines: return ""
-        head = lines[0]
-        if len(head) > text_max_len:
-            head = head[:text_max_len - 1] + "…"
-        return f": {head}"
+        arr = _doc_lines(txt)
+        if not arr: return ""
+        first = _render_line(arr[0])
+        if len(first) > text_max_len:
+            first = first[:text_max_len - 1] + "…"
+        return f": {first}"
 
     lines_out = ["mindmap"]
     IND = "  "
@@ -296,19 +396,19 @@ def to_mermaid_mindmap(
     def emit(nid: str, depth: int):
         n = REGISTRY.nodes[nid]
         if text_mode == "firstline":
-            label = f"{n.title}{_snippet_firstline(n.text)}"
+            label = f"{n.title}{_firstline_snippet(n.text)}"
             lines_out.append(f"{IND*depth}{label}")
         elif text_mode == "inline":
-            doc = inline_sep.join(_doc_lines(n.text))
+            doc = inline_sep.join(_render_line(ln) for ln in _doc_lines(n.text))
             label = n.title if not doc else f"{n.title}: {doc}"
             lines_out.append(f"{IND*depth}{label}")
         elif text_mode == "children":
             lines_out.append(f"{IND*depth}{n.title}")
             for l in _doc_lines(n.text):
-                lines_out.append(f"{IND*(depth+1)}{l}")
+                lines_out.append(f"{IND*(depth+1)}{_render_line(l)}")
         else:
-            # 回退到旧行为
-            label = f"{n.title}{_snippet_firstline(n.text)}"
+            # 回退
+            label = f"{n.title}{_firstline_snippet(n.text)}"
             lines_out.append(f"{IND*depth}{label}")
 
         for cid in children.get(nid, []):
@@ -317,12 +417,11 @@ def to_mermaid_mindmap(
     for r in roots:
         emit(r, 1)
     return "\n".join(lines_out)
-
+    
 def to_mermaid_flowchart(
     root=None,
     include=("contains", "answers", "supports", "opposes", "relates"),
     show_text=True,
-    wrap=28,
     node_styles: dict | None = None,
     edge_styles: dict | None = None,
     *,
@@ -395,33 +494,24 @@ def to_mermaid_flowchart(
 
     # --- 工具 ---
     def safe_id(qn: str) -> str: return "n_" + re.sub(r"[^0-9A-Za-z_]", "_", qn)
-    def esc(s: str) -> str: return s.replace("\\", "\\\\").replace('"', '\\"')
+    def esc_label_quotes(s: str) -> str: return s.replace("\\", "\\\\").replace('"', '\\"')
 
-    def wrap_html(s: str, width: int) -> str:
-        if width <= 0: return s
-        words = s.split()
-        lines, cur = [], ""
-        for w in words:
-            if len(cur) + len(w) + (1 if cur else 0) > width:
-                lines.append(cur); cur = w
-            else:
-                cur = w if not cur else (cur + " " + w)
-        if cur: lines.append(cur)
-        return "<br/>".join(lines)
+    def _doc_lines(txt: str) -> list[str]:
+        arr = [ln.strip() for ln in (txt or "").splitlines()]
+        arr = [ln for ln in arr if ln]  # 去空行
+        if text_lines == 0: return []
+        if text_lines is not None and text_lines > 0:
+            arr = arr[:text_lines]
+        return arr
 
-    def doc_as_html(txt: str) -> str:
+    def doc_md_html(txt: str) -> str:
         if not show_text:
             return ""
-        raw = [ln.strip() for ln in (txt or "").splitlines()]
-        raw = [ln for ln in raw if ln]  # 去空行
-        if text_lines == 0:
-            raw = []
-        elif text_lines is not None and text_lines > 0:
-            raw = raw[:text_lines]
-        if not raw:
+        lines = _doc_lines(txt)
+        if not lines:
             return ""
-        # 每一行单独 wrap，然后用 <br/> 连接，保持段落结构
-        return "<br/>".join(wrap_html(ln, wrap) for ln in raw)
+        # 对每一行做 Markdown -> HTML 转换；不再做人工 wrap，避免破坏标签
+        return "<br/>".join(_md_to_html_line(ln) for ln in lines)
 
     # --- 输出 ---
     lines = ["flowchart TD"]
@@ -430,14 +520,14 @@ def to_mermaid_flowchart(
     for nid in ordered_nodes:
         n = REGISTRY.nodes[nid]
         label = n.title
-        more = doc_as_html(n.text)
+        more = doc_md_html(n.text)
         if more:
             label = label + "<br/>" + more
         rounded = n.kind in ("topic", "title", "node", "note")
         br_l, br_r = ("(", ")") if rounded else ("[", "]")
-        lines.append(f'{safe_id(nid)}{br_l}"{esc(label)}"{br_r}')
+        lines.append(f'{safe_id(nid)}{br_l}"{esc_label_quotes(label)}"{br_r}')
 
-    # classDef
+    # classDef（只输出实际出现的 kind）
     present_kinds = {REGISTRY.nodes[nid].kind for nid in ordered_nodes}
     for kind in present_kinds:
         style = default_node_styles.get(kind)
@@ -459,14 +549,18 @@ def to_mermaid_flowchart(
     ]
     selected_edges.sort(key=lambda e: (0 if e.rel == "contains" else 1, e.rel, e.src, e.dst))
 
-    # linkStyle
     linkstyle_lines = []
     edge_idx = 0
-    for e in selected_edges:
-        lines.append(edge_line(e))
-        if edge_styles and (style := edge_styles.get(e.rel)):
-            linkstyle_lines.append(f"linkStyle {edge_idx} {style}")
-        edge_idx += 1
+    if edge_styles:
+        for e in selected_edges:
+            lines.append(edge_line(e))
+            style = edge_styles.get(e.rel)
+            if style:
+                linkstyle_lines.append(f"linkStyle {edge_idx} {style}")
+            edge_idx += 1
+    else:
+        for e in selected_edges:
+            lines.append(edge_line(e))
 
     lines.extend(linkstyle_lines)
     return "\n".join(lines)
