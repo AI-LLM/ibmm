@@ -1,0 +1,103 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>ibmm · PyScript + Mermaid</title>
+  <style>
+    body { margin:0; font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; }
+    header { padding:10px 14px; background:#0f172a; color:#e2e8f0; display:flex; gap:12px; align-items:center; }
+    header b { color:#fff; }
+    main { padding:16px; }
+    #mermaid { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:16px; overflow:auto; }
+    #error  { background:#111827; color:#fca5a5; border-radius:12px; padding:16px; overflow:auto; display:none; white-space:pre; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script>mermaid.initialize({ startOnLoad:false, securityLevel:'loose' });</script>
+
+  <!-- PyScript core（用最新稳定版即可；如需固定版本可把 latest 换成具体号） -->
+  <link rel="stylesheet" href="https://pyscript.net/releases/2025.8.1/core.css">
+  <script type="module" src="https://pyscript.net/releases/2025.8.1/core.js"></script>
+
+  <!-- 把本地 .py 文件放进 PyScript 的虚拟文件系统，便于 import -->
+  <py-config>
+    packages = []  # 需要装第三方纯 Python 包时加 ["micropip", ...]
+    [[fetch]]
+    files = [
+      "ibmm/__init__.py", "ibmm/core.py", "ibmm/ibis.py",
+      "graphs/__init__.py", "graphs/example_mixed.py"
+    ]
+  </py-config>
+</head>
+<body>
+  <header><b>IBMM</b><span>&nbsp;· Issue-Based Mind Map preview (SSE-ready)</span></header>
+  <main>
+    <div id="mermaid">Loading…</div>
+    <pre id="error"></pre>
+  </main>
+
+  <script type="py">
+from js import document, window, mermaid, EventSource
+import importlib, sys, traceback
+
+def show_error():
+    el = document.getElementById("error")
+    el.textContent = traceback.format_exc()
+    el.style.display = "block"
+    document.getElementById("mermaid").textContent = ""
+
+def render(graph_mod: str):
+    try:
+        import ibmm
+        importlib.invalidate_caches()
+        importlib.import_module(graph_mod)  # 只 import 即注册节点/边
+
+        node_styles = {
+            "issue":    "fill:#fff2cc,stroke:#cc7a00,stroke-width:1.5px;",
+            "position": "fill:#eafff5,stroke:#148f55,stroke-width:1.5px;",
+            "pro":      "fill:#f0fff4,stroke:#22c55e,stroke-width:1px;",
+            "con":      "fill:#fff1f2,stroke:#ef4444,stroke-width:1px;",
+        }
+
+        edge_styles = {
+            "supports": "stroke:green,stroke-width:2px;",
+            "opposes":  "stroke:red,stroke-width:2px;",
+            "answers":  "stroke:blue,stroke-width:1.5px,stroke-dasharray: 4 2;",
+            "relates":  "stroke:#6b7280,stroke-dasharray: 2 2;",
+            # "contains": "stroke:#999,stroke-width:1px;"  # 如需也可加
+        }
+
+        mmd = ibmm.to_mermaid_flowchart(
+            root=None,
+            include=("contains","answers","supports","opposes","relates"),
+            show_text=True, wrap=30,
+            node_styles=node_styles,
+            edge_styles=edge_styles,
+        )
+        box = document.getElementById("mermaid")
+        box.textContent = mmd
+        mermaid.init(None, box)
+        document.getElementById("error").style.display = "none"
+    except Exception:
+        show_error()
+
+# 支持 ?graph=graphs.example_mixed 或 graphs/example_mixed.py
+qs = window.location.search or ""
+params = {}
+if qs.startswith("?"):
+    for part in qs[1:].split("&"):
+        if "=" in part:
+            k,v = part.split("=",1); params[k]=v
+graph = params.get("graph") or "graphs.example_mixed"
+if graph.endswith(".py"): graph = graph[:-3].replace("/", ".")
+render(graph)
+
+# 可选：SSE 热刷新（静态托管无 /events 时就连不上，页面照常工作）
+try:
+    es = EventSource.new("/events")
+    es.onmessage = lambda ev: window.location.reload()
+except Exception:
+    pass
+  </script>
+</body>
+</html>

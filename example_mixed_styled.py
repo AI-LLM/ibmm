@@ -1,5 +1,5 @@
 from ibmm import to_mermaid_flowchart
-import example_mixed  # 只要 import 就会注册节点/边
+import graphs.example_mixed  # 只要 import 就会注册节点/边
 
 node_styles = {
     "issue":    "fill:#fff2cc,stroke:#cc7a00,stroke-width:1.5px;",
