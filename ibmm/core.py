@@ -624,10 +624,13 @@ def to_mermaid_flowchart(
         a, b = safe_id(e.src), safe_id(e.dst)
         if e.rel == "contains": return f"{a} --> {b}"
         if e.rel == "relates":
-            # 若有自定义标签则用标签，否则显示 "relates"
-            lbl = e.label.strip() if (hasattr(e, "label") and e.label) else "relates"
-            # Mermaid 点划线带 label 的写法：-. label .->
-            return f"{a} -. {esc_label_quotes(lbl)} .-> {b}"
+            # 若有自定义标签则用标签，否则不显示标签（仅显示点划线）
+            if hasattr(e, "label") and e.label and e.label.strip():
+                # 带标签的点划线: -. label .->
+                return f"{a} -. {esc_label_quotes(e.label.strip())} .-> {b}"
+            else:
+                # 无标签的点划线: -..->
+                return f"{a} -..-> {b}"
         return f'{a} -- "{e.rel}" --> {b}'
 
     selected_edges = [

@@ -12,7 +12,7 @@ class ODP:
         """开放数据促进创新与透明。"""
         +___("optional label").Gov_Sponsors.Strategy  # 纯关联
 
-    @Title
+    @Title("工作")
     class Workstreams:
         @Title
         class Ingestion: """数据接入与标准化"""
@@ -28,6 +28,7 @@ class Gov_Sponsors:
     @Title
     class Strategy:
         """开放政府、数字化转型、法规配套。"""
+    +___.ODP.Strategy.Workstreams
 
 # ===== IBIS 问题与立场（同时允许像 mind map 一样展开）=====
 @Issue("Should we open-source the portal stack?")
