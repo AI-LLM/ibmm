@@ -122,9 +122,24 @@ def make_kind(kind: str):
     """创建一个节点装饰器，既支持 @Kind 也支持 @Kind('标题', ...)。"""
     def apply(c, title: Optional[str] = None, **meta):
         qn = c.__qualname__
+
+        # === 抓取 class 定义的文件与行号 ===
+        src_file = inspect.getsourcefile(c) or inspect.getfile(c)
+        try:
+            _, src_line = inspect.getsourcelines(c)   # class 头行号
+        except (OSError, TypeError):
+            src_line = None
+
+        meta_out = dict(meta or {})
+        if src_file:
+            meta_out["src_file"] = src_file
+        if src_line:
+            meta_out["src_line"] = src_line
+        # ========================================
+
         REGISTRY.add_node(Node(
             id=qn, kind=kind, title=_title(c, title),
-            text=(inspect.getdoc(c) or ""), parent=_parent_of(qn), meta=meta or {}
+            text=(inspect.getdoc(c) or ""), parent=_parent_of(qn), meta=meta_out
         ))
         for binder in PROXY_BINDERS: binder(c, qn)
         return c
@@ -575,9 +590,22 @@ def to_mermaid_flowchart(
     for nid in ordered_nodes:
         n = REGISTRY.nodes[nid]
         label = n.title
+
+        # === 追加“编辑链接” ===
+        sf = n.meta.get("src_file")
+        sl = n.meta.get("src_line")
+        if sf and sl:
+            #base = os.path.basename(sf)
+            # 单引号属性，避免 Mermaid 语法冲突；可带 target/_blank
+            if sf.startswith("/home/pyodide/"):
+                sf = sf[len("/home/pyodide/"):]
+            label = f"<a href='edit/{sf}:{sl}' target='_blank' rel='noopener noreferrer'>{label}</a>"
+        # ==========================
+
         more = doc_md_html(n.text)
         if more:
             label = label + "<br/>" + more
+
         rounded = n.kind in ("topic", "title", "node", "note")
         br_l, br_r = ("(", ")") if rounded else ("[", "]")
         lines.append(f'{safe_id(nid)}{br_l}"{esc_label_quotes(label)}"{br_r}')

@@ -1,14 +1,18 @@
+# ibmm-dev/__main__.pys
 from __future__ import annotations
 import sys, os, time, webbrowser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from functools import partial
 from urllib.parse import urlparse, quote_plus
+import urllib.parse
+import subprocess
 from pathlib import Path
 import importlib
 from string import Template
 
 HOST = os.environ.get("IBMM_DEV_HOST", "127.0.0.1")
 PORT = int(os.environ.get("IBMM_DEV_PORT", "8765"))
+PROJECT_ROOT = os.getcwd()
 
 # ----------------- 工具 -----------------
 def common_docroot(paths):
@@ -20,7 +24,7 @@ def list_py_files(root: Path) -> list[Path]:
     """递归列出 root 下的所有 .py（排除 __pycache__、隐藏目录）。"""
     items = []
     for p in root.rglob("*.py"):
-        if "__pycache__" in p.parts: 
+        if "__pycache__" in p.parts:
             continue
         items.append(p)
     return sorted(items)
@@ -33,10 +37,10 @@ def compute_sig_for_dirs(dirs: list[Path], extra_files: list[Path] | None = None
             try: sig ^= d.stat().st_mtime_ns
             except FileNotFoundError: pass
             continue
-        if not d.exists(): 
+        if not d.exists():
             continue
         for p in d.rglob("*.py"):
-            if "__pycache__" in p.parts: 
+            if "__pycache__" in p.parts:
                 continue
             try: sig ^= p.stat().st_mtime_ns
             except FileNotFoundError: pass
@@ -172,8 +176,72 @@ class DevHandler(SimpleHTTPRequestHandler):
             self.wfile.write(html.encode("utf-8"))
             return
 
+        # 截获 /edit/... ，其他路径走原逻辑
+        if self.path.startswith("/edit/"):
+            self._handle_edit()
+            return
         # ---- 3) 其他：静态 ----
         return super().do_GET()
+
+    def _handle_edit(self):
+        # /edit/{src_path}:{line_num}
+        parsed = urllib.parse.urlsplit(self.path)
+        raw = urllib.parse.unquote(parsed.path[len("/edit/"):])
+
+        # 只按“最后一个冒号”分割，避免路径中出现冒号（例如未来扩展）
+        if ":" not in raw:
+            self._send_text(400, f"Bad edit target: {raw}")
+            return
+        src_str, line_str = raw.rsplit(":", 1)
+
+        try:
+            line_no = int(line_str)
+        except ValueError:
+            self._send_text(400, f"Invalid line number: {line_str}")
+            return
+
+        # 允许绝对路径；相对路径相对于项目根
+        if os.path.isabs(src_str):
+            fs_path = src_str
+        else:
+            fs_path = os.path.abspath(os.path.join(PROJECT_ROOT, src_str))
+
+        # 简单防护：必须在项目目录内
+        try:
+            common = os.path.commonpath([PROJECT_ROOT, os.path.abspath(fs_path)])
+        except ValueError:
+            common = ""  # 不同盘符等情况
+        if common != PROJECT_ROOT:
+            self._send_text(403, f"Forbidden path: {fs_path}")
+            return
+
+        if not os.path.exists(fs_path):
+            self._send_text(404, f"File not found: {fs_path}")
+            return
+
+        # 执行 'subl path:line'
+        cmd = ["subl", f"{fs_path}:{line_no}"]
+        try:
+            subprocess.Popen(cmd)  # 非阻塞
+        except FileNotFoundError:
+            # subl 不存在时给出清晰提示
+            self._send_text(500, "subl not found. Install Sublime CLI or add to PATH.")
+            return
+        except Exception as e:
+            self._send_text(500, f"Failed to launch subl: {e}")
+            return
+
+        # 成功：可以 204，无内容
+        self.send_response(204)
+        self.end_headers()
+
+    def _send_text(self, code: int, msg: str):
+        data = msg.encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
 class DevHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
