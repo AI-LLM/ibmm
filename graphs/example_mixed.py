@@ -10,7 +10,7 @@ class ODP:
     @Title #等价于@Title("Vision")
     class Vision:
         """开放数据促进创新与透明。"""
-        +___.Gov_Sponsors.Strategy  # 纯关联
+        +___("optional label").Gov_Sponsors.Strategy  # 纯关联
 
     @Title
     class Workstreams:

@@ -28,6 +28,7 @@ class Edge:
     src: str
     dst: str
     rel: str                # contains / relates / supports / opposes / answers / ...
+    label: Optional[str] = None   # ← 新增：仅对 relates 有意义
 
 @dataclass
 class _Pending:
@@ -35,29 +36,30 @@ class _Pending:
     dst_ref: Any
     rel: str
     origin: Optional[tuple[str, int]]  # (filename, lineno)
+    label: Optional[str] = None
 
 class Registry:
     def __init__(self):
         self.nodes: Dict[str, Node] = {}
         self.edges: List[Edge] = []
-        self._edge_set: set[tuple[str, str, str]] = set()   # ← 新增：去重用
+        self._edge_set: set[tuple[str, str, str, Optional[str]]] = set()   # ← 新增：去重用
         self._pending: List[_Pending] = []
 
     # 节点/边
     def add_node(self, n: Node):
         self.nodes[n.id] = n
         if n.parent:
-            self.add_edge(n.parent, n.id, "contains")  # ← 用 add_edge，而不是直接 append
+            self.add_edge(n.parent, n.id, "contains", None)  # ← 用 add_edge，而不是直接 append
 
-    def defer(self, src_ref: Any, dst_ref: Any, rel: str, origin: Optional[tuple[str,int]] = None):
-        self._pending.append(_Pending(src_ref, dst_ref, rel, origin))
+    def defer(self, src_ref: Any, dst_ref: Any, rel: str, origin: Optional[tuple[str,int]] = None, label: Optional[str] = None):
+        self._pending.append(_Pending(src_ref, dst_ref, rel, origin, label))
 
-    def add_edge(self, src: str, dst: str, rel: str):
-        key = (src, dst, rel)
+    def add_edge(self, src: str, dst: str, rel: str, label: Optional[str] = None):
+        key = (src, dst, rel, label)
         if key in self._edge_set:
             return
         self._edge_set.add(key)
-        self.edges.append(Edge(src, dst, rel))
+        self.edges.append(Edge(src, dst, rel, label))
 
     # 解析
     def _resolve_ref(self, ref: Any) -> Optional[str]:
@@ -104,7 +106,7 @@ class Registry:
             if src and dst:
                 for v in VALIDATORS:
                     v(p.rel, src, dst, self, p.origin)
-                self.add_edge(src, dst, p.rel)
+                self.add_edge(src, dst, p.rel, p.label)
 
 REGISTRY = Registry()
 
@@ -154,16 +156,47 @@ class _RelProxy:
       类对象（src=该类）  :  +Some.___.A.B
       下标路径             :  +___.["A.B.C"]
     """
-    __slots__ = ("rel", "path", "src")
-    def __init__(self, rel: str, path: str = "", src: Optional[str] = None):
+    __slots__ = ("rel", "path", "src", "label")
+    def __init__(self, rel: str, path: str = "", src: Optional[str] = None, label: Optional[str] = None):
         object.__setattr__(self, "rel", rel)
         object.__setattr__(self, "path", path)
         object.__setattr__(self, "src", src)
+        object.__setattr__(self, "label", label)   # ← 保存标签
+
     def __getattr__(self, name: str) -> "_RelProxy":
         sep = "" if not self.path else "."
-        return self.__class__(self.rel, f"{self.path}{sep}{name}", self.src)
+        return self.__class__(self.rel, f"{self.path}{sep}{name}", self.src, self.label)
     def __getitem__(self, dotted: str) -> "_RelProxy":
         return self.__class__(self.rel, dotted, self.src)
+
+    # 把 ___(...) 当作“就地设定标签/路径”的便捷入口
+    def __call__(self, *args, **kwargs) -> "_RelProxy":
+        """
+        用法约定（为了支持 +___("标签").A.B）：
+            - ___("标签")                 -> 仅设置标签（推荐）
+            - ___("路径","标签")          -> 同时设置路径与标签
+            - ___(path="A.B", label="依赖") -> 关键字形式
+            - ___("路径")                 -> （不推荐）若只传一串且你真想当路径，请用 ___["路径"] 更明确
+        """
+        path  = kwargs.get("path")
+        label = kwargs.get("label")
+
+        if len(args) == 1 and isinstance(args[0], str):
+            # 约定：单个位置参数默认为“标签”（满足 ___("标签").A.B 的写法）
+            if path is None and label is None:
+                label = args[0]
+            elif path is None:
+                path = args[0]
+        elif len(args) >= 2:
+            path  = args[0]
+            label = args[1]
+
+        return self.__class__(
+            self.rel,
+            path if path is not None else self.path,
+            self.src,
+            label if label is not None else self.label,
+        )
     def __pos__(self):
         if not self.path:
             raise ValueError(f"Empty target path for relation '{self.rel}'.")
@@ -172,7 +205,7 @@ class _RelProxy:
         frame = inspect.currentframe().f_back
         fi = inspect.getframeinfo(frame)
         origin = (fi.filename, fi.lineno)
-        REGISTRY.defer(s, self.path, self.rel, origin=origin)
+        REGISTRY.defer(s, self.path, self.rel, origin=origin, label=self.label)
         return self
 
 # 全局“关联”
@@ -562,7 +595,11 @@ def to_mermaid_flowchart(
     def edge_line(e):
         a, b = safe_id(e.src), safe_id(e.dst)
         if e.rel == "contains": return f"{a} --> {b}"
-        if e.rel == "relates":  return f"{a} -. relates .-> {b}"
+        if e.rel == "relates":
+            # 若有自定义标签则用标签，否则显示 "relates"
+            lbl = e.label.strip() if (hasattr(e, "label") and e.label) else "relates"
+            # Mermaid 点划线带 label 的写法：-. label .->
+            return f"{a} -. {esc_label_quotes(lbl)} .-> {b}"
         return f'{a} -- "{e.rel}" --> {b}'
 
     selected_edges = [
