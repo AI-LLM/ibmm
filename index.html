@@ -65,9 +65,30 @@
     [[fetch]]
     files = [
       "ibmm/__init__.py", "ibmm/core.py", "ibmm/ibis.py",
-      "graphs/__init__.py", "graphs/example_mixed.py"
+      "graphs/__init__.py"
     ]
   </py-config>
+  <script>
+    // Get graph parameter from URL
+    function getGraphFromUrl() {
+      const qs = window.location.search || "";
+      const params = {};
+      if (qs.startsWith("?")) {
+        for (const part of qs.substring(1).split("&")) {
+          if (part.includes("=")) {
+            const [k, v] = part.split("=", 2);
+            params[k] = v;
+          }
+        }
+      }
+      let graph = params.graph || "graphs.example_mixed";
+      if (graph.endsWith(".py")) graph = graph.slice(0, -3).replace("/", ".");
+      const graphPath = graph.replace(".", "/") + ".py";
+      return { graph, graphPath };
+    }
+
+    const { graph, graphPath } = getGraphFromUrl();
+  </script>
 </head>
 <body>
   <header><b>IBMM</b><span>&nbsp;· Issue-Based Mind Map preview</span></header>
@@ -95,6 +116,7 @@ def show_error():
     el.textContent = traceback.format_exc()
     el.style.display = "block"
     document.getElementById("mermaid").textContent = ""
+    print(traceback.format_exc(),file=sys.stderr)
 
 # --- Globals ---
 current_view = "flowchart"
@@ -159,16 +181,19 @@ def render_mermaid_diagram(mmd_code):
     document.getElementById("error").style.display = "none"
 
 # --- Initial page setup (called from JS) ---
-def initial_setup():
-    qs = window.location.search or ""
-    params = {}
-    if qs.startswith("?"):
-        for part in qs[1:].split("&"):
-            if "=" in part:
-                k,v = part.split("=",1); params[k]=v
-    graph = params.get("graph") or "graphs.example_mixed"
-    if graph.endswith(".py"): graph = graph[:-3].replace("/", ".")
-    
+def initial_setup(graph:str, graph_path: str, content: str):
+    # Write content to the graph_path file
+    from pathlib import Path
+    import os
+
+    # Ensure directory exists
+    file_path = Path(graph_path)
+    os.makedirs(file_path.parent, exist_ok=True)
+
+    # Write content to file
+    with open(graph_path, 'w') as f:
+        f.write(content)
+
     try:
         importlib.invalidate_caches()
         importlib.import_module(graph)
@@ -280,8 +305,31 @@ window.pyRenderMindmap = pyscript.ffi.create_proxy(render_mindmap)
         window.pyRenderMindmap(graph_mod);
       });
 
+      // Load graph content from file
+      async function loadGraphContent() {
+        try {
+          const response = await fetch(`${graphPath}?t=${Date.now()}`);
+          if (!response.ok) {
+            throw new Error(`Failed to load ${graphPath}: ${response.status} ${response.statusText}`);
+          }
+          const graphContent = await response.text();
+          console.log(`Loaded graph from ${graphPath}`);
+          return graphContent;
+        } catch (error) {
+          console.error("Error loading graph content:", error);
+          document.getElementById("error").textContent = `Error loading ${graphPath}: ${error.message}`;
+          document.getElementById("error").style.display = "block";
+          return null;
+        }
+      }
+
+      // Initialize graph content
+      loadGraphContent().then(content => {
+        if (content) {
+          console.log("Graph content loaded successfully");
+          // You can add additional processing of the content here if needed
       // --- Initialization ---
-      graph_mod = window.pyInitialSetup();
+      graph_mod = window.pyInitialSetup(graph, graphPath, content);
       if (graph_mod) {
         allOptions = window.pyGetNodeClasses();
         renderUI();
@@ -289,6 +337,9 @@ window.pyRenderMindmap = pyscript.ffi.create_proxy(render_mindmap)
         if (current_view === 'flowchart') redrawFlowchart();
         else window.pyRenderMindmap(graph_mod);
       }
+
+        }//loadGraphContent
+      });
 
       // Optional: SSE Hot Reload
       try {

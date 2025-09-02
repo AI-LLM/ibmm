@@ -6,9 +6,9 @@ from ibmm import to_mermaid_flowchart, summarize
 class Remote_First:
     """是否采用“远程优先”的公司政策？"""
 
-    @Position("Yes")
+    @Position("赞成")
     class Yes:
-        """赞成：更灵活、拓展人才池。"""
+        """更灵活、拓展人才池。"""
 
         @Pro
         class Wider_Talent_Pool:
@@ -16,7 +16,7 @@ class Remote_First:
             # ✅ 合法：Pro → Position
             +supports.Remote_First.Yes
             # 如需表达“与 No.Culture_Cohesion 有所关联/对照”，可用中性关联：
-            +___.Remote_First.No.Culture_Cohesion   # 不作语义强约束
+            +___("随意关联，不建议").Remote_First.No.Culture_Cohesion   # 不作语义强约束
 
         @Con
         class Collaboration_Gaps:
@@ -26,9 +26,9 @@ class Remote_First:
             # 如果你理解为“这个缺点使 No 更有说服力”，仍然用 Con→Position：
             # +opposes.Remote_First.No   （按你的语义选择其一）
 
-    @Position("No")
+    @Position("反对")
     class No:
-        """反对：文化/安全/管理成本考虑。"""
+        """文化/安全/管理成本考虑。"""
 
         @Pro
         class Culture_Cohesion:
