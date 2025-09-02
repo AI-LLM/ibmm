@@ -1,6 +1,8 @@
 # ibmm-dev/__main__.pys
 from __future__ import annotations
 import sys, os, time, webbrowser
+import argparse
+import shlex
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from functools import partial
 from urllib.parse import urlparse, quote_plus
@@ -16,7 +18,7 @@ PROJECT_ROOT = os.getcwd()
 
 # ----------------- 工具 -----------------
 def common_docroot(paths):
-    """返回多个路径的公共上层目录 Path。"""
+    """返回多个路径的公共上层目录 Path."""
     paths = [str(Path(p).resolve()) for p in paths]
     return Path(os.path.commonpath(paths))
 
@@ -219,16 +221,17 @@ class DevHandler(SimpleHTTPRequestHandler):
             self._send_text(404, f"File not found: {fs_path}")
             return
 
-        # 执行 'subl path:line'
-        cmd = ["subl", f"{fs_path}:{line_no}"]
+        # 执行 'EDITOR path:line'
+        editor_cmd = self.server.editor_cmd
+        cmd = shlex.split(editor_cmd) + [f"{fs_path}:{line_no}"]
         try:
             subprocess.Popen(cmd)  # 非阻塞
         except FileNotFoundError:
             # subl 不存在时给出清晰提示
-            self._send_text(500, "subl not found. Install Sublime CLI or add to PATH.")
+            self._send_text(500, f"Editor command not found: '{editor_cmd}'. Check your config or PATH.")
             return
         except Exception as e:
-            self._send_text(500, f"Failed to launch subl: {e}")
+            self._send_text(500, f"Failed to launch editor '{editor_cmd}': {e}")
             return
 
         # 成功：可以 204，无内容
@@ -246,15 +249,17 @@ class DevHandler(SimpleHTTPRequestHandler):
 class DevHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
     def __init__(self, server_address, RequestHandlerClass,
-                 docroot: Path, watch_root: Path, ibmm_pkg_dir: Path, index_html: Path | None):
+                 docroot: Path, watch_root: Path, ibmm_pkg_dir: Path, index_html: Path | None,
+                 editor_cmd: str):
         super().__init__(server_address, RequestHandlerClass)
         self.docroot = docroot
         self.watch_root = watch_root
         self.ibmm_pkg_dir = ibmm_pkg_dir
         self.index_html = index_html
+        self.editor_cmd = editor_cmd
 
 # ----------------- 启动逻辑 -----------------
-def run(entry: str | None):
+def run(entry: str | None, editor_cmd: str):
     """
     entry:
       - None           : 遍历 ./graphs
@@ -304,7 +309,8 @@ def run(entry: str | None):
                           docroot=docroot,
                           watch_root=watch_root,
                           ibmm_pkg_dir=ibmm_pkg_dir,
-                          index_html=index_html)
+                          index_html=index_html,
+                          editor_cmd=editor_cmd)
 
     url_root = f"http://{HOST}:{PORT}"
     url_list = f"{url_root}/list"
@@ -338,5 +344,17 @@ def run(entry: str | None):
         print("\n[ibmm-dev] bye.")
 
 if __name__ == "__main__":
-    entry = sys.argv[1] if len(sys.argv) >= 2 else None
-    run(entry)
+    parser = argparse.ArgumentParser(description="ibmm-dev server")
+    parser.add_argument(
+        "entry",
+        nargs="?",
+        default=None,
+        help="Path to a directory or file to watch (default: ./graphs)",
+    )
+    parser.add_argument(
+        "--editor",
+        default="subl",
+        help="Editor command to open files (e.g., 'code -g', 'subl'). Default: 'subl'",
+    )
+    args = parser.parse_args()
+    run(args.entry, args.editor)

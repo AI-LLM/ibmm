@@ -6,7 +6,7 @@ from ibmm import to_mermaid_flowchart, summarize
 class Remote_First:
     """是否采用“远程优先”的公司政策？"""
 
-    @Position("赞成")
+    @Position("👍赞成")
     class Yes:
         """更灵活、拓展人才池。"""
 
@@ -26,7 +26,7 @@ class Remote_First:
             # 如果你理解为“这个缺点使 No 更有说服力”，仍然用 Con→Position：
             # +opposes.Remote_First.No   （按你的语义选择其一）
 
-    @Position("反对")
+    @Position("🙅反对")
     class No:
         """文化/安全/管理成本考虑。"""
 
