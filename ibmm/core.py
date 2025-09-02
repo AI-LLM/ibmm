@@ -496,6 +496,7 @@ def to_mermaid_flowchart(
     edge_styles: dict | None = None,
     *,
     text_lines: int | None = None,    # 取 docstring 的前 N 行；None=全部
+    subgraphs: list[Any] | None = None,
 ) -> str:
     """
     导出 Mermaid flowchart（可选自定义节点/边样式）。
@@ -513,6 +514,7 @@ def to_mermaid_flowchart(
         }
         注意：我们已自动按输出顺序为每条边计算 linkStyle 编号，你无需关心 index。
     text_lines : 取 docstring 的前 N 行；None=全部（默认），0=不显示（等价 show_text=False）。
+    subgraphs : 要渲染为 subgraph 的根节点列表，可以是类对象或 qualname 字符串。
     """
     import re
     REGISTRY.resolve_all()
@@ -585,9 +587,9 @@ def to_mermaid_flowchart(
 
     # --- 输出 ---
     lines = ["flowchart TD"]
-    ordered_nodes = sorted(selected, key=lambda i: REGISTRY.nodes[i].title.lower())
+    ordered_nodes = sorted(list(selected), key=lambda i: REGISTRY.nodes[i].title.lower())
 
-    for nid in ordered_nodes:
+    def render_node_definition(nid: str) -> str:
         n = REGISTRY.nodes[nid]
         label = n.title
 
@@ -608,7 +610,48 @@ def to_mermaid_flowchart(
 
         rounded = n.kind in ("topic", "title", "node", "note")
         br_l, br_r = ("(", ")") if rounded else ("[", "]")
-        lines.append(f'{safe_id(nid)}{br_l}"{esc_label_quotes(label)}"{br_r}')
+        return f'{safe_id(nid)}{br_l}"{esc_label_quotes(label)}"{br_r}'
+
+    if subgraphs:
+        subgraph_root_ids = [_resolve_id(r) for r in subgraphs]
+        subgraph_root_ids = [r for r in subgraph_root_ids if r and r in REGISTRY.nodes]
+        
+        nodes_in_subgraphs = {}  # root_id -> list of node ids
+        standalone_nodes = []
+
+        for nid in ordered_nodes:
+            found_root = None
+            curr = nid
+            path_to_root = []
+            while curr:
+                path_to_root.append(curr)
+                curr = REGISTRY.nodes[curr].parent
+            
+            for ancestor in path_to_root:
+                if ancestor in subgraph_root_ids:
+                    found_root = ancestor
+                    break
+            
+            if found_root:
+                if found_root not in nodes_in_subgraphs:
+                    nodes_in_subgraphs[found_root] = []
+                nodes_in_subgraphs[found_root].append(nid)
+            else:
+                standalone_nodes.append(nid)
+
+        for nid in standalone_nodes:
+            lines.append(render_node_definition(nid))
+
+        sorted_subgraph_roots = sorted(nodes_in_subgraphs.keys(), key=lambda r: REGISTRY.nodes[r].title.lower())
+        for root_id in sorted_subgraph_roots:
+            subgraph_title = REGISTRY.nodes[root_id].title
+            lines.append(f'subgraph "{esc_label_quotes(subgraph_title)}"')
+            for nid in nodes_in_subgraphs[root_id]:
+                lines.append(f"  {render_node_definition(nid)}")
+            lines.append("end")
+    else:
+        for nid in ordered_nodes:
+            lines.append(render_node_definition(nid))
 
     # classDef（只输出实际出现的 kind）
     present_kinds = {REGISTRY.nodes[nid].kind for nid in ordered_nodes}

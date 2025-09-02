@@ -95,6 +95,7 @@ def render_flowchart(graph_mod: str):
             show_text=True,
             node_styles=node_styles,
             edge_styles=edge_styles,
+            subgraphs=["OS_Question.Yes", "OS_Question.No"]
         )
         render_mermaid_diagram(mmd)
     except Exception:
