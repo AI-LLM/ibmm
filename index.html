@@ -9,22 +9,59 @@
     header { padding:10px 14px; background:#0f172a; color:#e2e8f0; display:flex; gap:12px; align-items:center; }
     header b { color:#fff; }
     main { padding:16px; }
-    .button-group { margin-bottom:16px; display:flex; gap:8px; }
+    .button-group { margin-bottom:16px; display:flex; gap:8px; align-items:center; }
     .button-group button { padding:8px 16px; border-radius:6px; border:1px solid #e5e7eb; background:#f9fafb; cursor:pointer; font-weight:500; }
     .button-group button.active { background:#0f172a; color:#fff; border-color:#0f172a; }
     #mermaid { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:16px; overflow:auto; }
     #error  { background:#111827; color:#fca5a5; border-radius:12px; padding:16px; overflow:auto; display:none; white-space:pre; }
+
+    /* New styles for tag-based multi-select */
+    #subgraph-input-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      padding: 4px;
+      margin-left: 16px;
+    }
+    #tag-container {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+    .tag {
+      display: flex;
+      align-items: center;
+      background-color: #e5e7eb;
+      color: #1f2937;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .tag .close-btn {
+      margin-left: 6px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    #subgraph-adder {
+      border: none;
+      outline: none;
+      background: transparent;
+      padding: 4px;
+    }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
   <script>mermaid.initialize({ startOnLoad:false, securityLevel:'loose' });</script>
 
-  <!-- PyScript core（用最新稳定版即可；如需固定版本可把 latest 换成具体号） -->
+  <!-- PyScript core -->
   <link rel="stylesheet" href="https://pyscript.net/releases/2025.8.1/core.css">
   <script type="module" src="https://pyscript.net/releases/2025.8.1/core.js"></script>
 
-  <!-- 把本地 .py 文件放进 PyScript 的虚拟文件系统，便于 import -->
+  <!-- PyScript config -->
   <py-config>
-    packages = []  # 需要装第三方纯 Python 包时加 ["micropip", ...]
+    packages = []
     [[fetch]]
     files = [
       "ibmm/__init__.py", "ibmm/core.py", "ibmm/ibis.py",
@@ -38,9 +75,10 @@
     <div class="button-group">
       <button id="chart-btn" class="active">Flowchart</button>
       <button id="mindmap-btn">Mindmap</button>
-      <div style="display: flex; align-items: center; gap: 8px; margin-left: 16px;">
-        <label for="subgraph-selector" style="color: #4b5563; font-weight: 500;">Subgraphs:</label>
-        <select id="subgraph-selector" multiple style="width: 250px; border-radius: 6px; border: 1px solid #d1d5db; padding: 4px;"></select>
+      <!-- New tag-based multi-select input -->
+      <div id="subgraph-input-container">
+        <div id="tag-container"></div>
+        <select id="subgraph-adder"></select>
       </div>
     </div>
     <div id="mermaid">Loading…</div>
@@ -48,38 +86,38 @@
   </main>
 
   <script type="py">
-from js import document, window, mermaid, EventSource
-from pyodide.ffi import create_proxy
-import importlib, sys, traceback
+from js import document, window, mermaid, EventSource, Object
+from pyodide.ffi import create_proxy, to_js
+import importlib, sys, traceback, pyscript
 
 def show_error():
     el = document.getElementById("error")
     el.textContent = traceback.format_exc()
     el.style.display = "block"
     document.getElementById("mermaid").textContent = ""
-    print(traceback.format_exc(),file=sys.stderr)
 
 # --- Globals ---
 current_view = "flowchart"
-ALL_NODE_CLASSES = []
 CLASS_MAP = {}
-# ---------------
 
-def render_mermaid_diagram(mmd_code):
-    """渲染 Mermaid 图表"""
-    box = document.getElementById("mermaid")
-    box.innerHTML = f'<pre class="mermaid">{mmd_code}</pre>'
-    mermaid.run()
-    document.getElementById("error").style.display = "none"
+# --- Python functions exposed to JavaScript ---
 
-def render_flowchart(graph_mod: str):
+def get_node_classes_and_map():
+    """Called from JS to get all node classes and a map to them."""
+    global CLASS_MAP
+    import ibmm
+    node_classes = ibmm.to_node_classes()
+    CLASS_MAP = {c.__qualname__: c for c in node_classes}
+    # Return a JS-friendly array of names
+    return to_js(sorted(list(CLASS_MAP.keys())))
+
+def render_flowchart_js(graph_mod: str, selected_subgraphs: Object):
+    """JS-callable version of render_flowchart."""
     try:
         import ibmm
-
-        # 从下拉框读取 subgraphs
-        selector = document.getElementById("subgraph-selector")
-        selected_options = [opt.value for opt in selector.selectedOptions]
-        subgraph_objects = [CLASS_MAP[name] for name in selected_options if name in CLASS_MAP]
+        # Convert JS array of names to Python list
+        selected_names = selected_subgraphs.to_py()
+        subgraph_objects = [CLASS_MAP[name] for name in selected_names if name in CLASS_MAP]
 
         node_styles = {
             "issue":    "fill:#fff2cc,stroke:#cc7a00,stroke-width:1.5px;",
@@ -87,7 +125,6 @@ def render_flowchart(graph_mod: str):
             "pro":      "fill:#f0fff4,stroke:#22c55e,stroke-width:1px;",
             "con":      "fill:#fff1f2,stroke:#ef4444,stroke-width:1px;",
         }
-
         edge_styles = {
             "supports": "stroke:green,stroke-width:2px;",
             "opposes":  "stroke:red,stroke-width:2px;",
@@ -115,97 +152,153 @@ def render_mindmap(graph_mod: str):
     except Exception:
         show_error()
 
-def render(graph_mod: str):
-    if current_view == "flowchart":
-        render_flowchart(graph_mod)
-    else:
-        render_mindmap(graph_mod)
+def render_mermaid_diagram(mmd_code):
+    box = document.getElementById("mermaid")
+    box.innerHTML = f'<pre class="mermaid">{mmd_code}</pre>'
+    mermaid.run()
+    document.getElementById("error").style.display = "none"
 
-# --- 初始化和事件处理 ---
-
-# 从 URL 获取 graph 模块名
-qs = window.location.search or ""
-params = {}
-if qs.startswith("?"):
-    for part in qs[1:].split("&"):
-        if "=" in part:
-            k,v = part.split("=",1); params[k]=v
-graph = params.get("graph") or "graphs.example_mixed"
-if graph.endswith(".py"): graph = graph[:-3].replace("/", ".")
-
-# 填充 subgraph 选择器
-def populate_selector():
-    global ALL_NODE_CLASSES, CLASS_MAP
+# --- Initial page setup (called from JS) ---
+def initial_setup():
+    qs = window.location.search or ""
+    params = {}
+    if qs.startswith("?"):
+        for part in qs[1:].split("&"):
+            if "=" in part:
+                k,v = part.split("=",1); params[k]=v
+    graph = params.get("graph") or "graphs.example_mixed"
+    if graph.endswith(".py"): graph = graph[:-3].replace("/", ".")
+    
     try:
-        import ibmm
-        ALL_NODE_CLASSES = ibmm.to_node_classes()
-        print("DEBUG: Classes from to_node_classes():", ALL_NODE_CLASSES)
-        CLASS_MAP = {c.__qualname__: c for c in ALL_NODE_CLASSES}
-
-        selector = document.getElementById("subgraph-selector")
-        selector.innerHTML = ""
-
-        for name in sorted(CLASS_MAP.keys()):
-            option = document.createElement("option")
-            option.value = name
-            option.textContent = name
-            selector.appendChild(option)
+        importlib.invalidate_caches()
+        importlib.import_module(graph)
+        return graph
     except Exception:
         show_error()
+        return None
 
-# 设置按钮激活状态
-def set_active_button(active_id):
-    document.getElementById("chart-btn").classList.remove("active")
-    document.getElementById("mindmap-btn").classList.remove("active")
-    document.getElementById(active_id).classList.add("active")
+# --- Expose Python functions to JavaScript ---
+window.pyInitialSetup = pyscript.ffi.create_proxy(initial_setup)
+window.pyGetNodeClasses = pyscript.ffi.create_proxy(get_node_classes_and_map)
+window.pyRenderFlowchart = pyscript.ffi.create_proxy(render_flowchart_js)
+window.pyRenderMindmap = pyscript.ffi.create_proxy(render_mindmap)
 
-# 定义事件回调
-def on_chart_click(event):
-    global current_view
-    current_view = "flowchart"
-    set_active_button("chart-btn")
-    render(graph)
+  </script>
 
-def on_mindmap_click(event):
-    global current_view
-    current_view = "mindmap"
-    set_active_button("mindmap-btn")
-    render(graph)
+  <script>
+    // --- Pure JavaScript for UI interaction ---
+    function initializeApp() {
+      // --- State ---
+      let current_view = "flowchart";
+      let allOptions = [];
+      let selectedOptions = [];
+      let graph_mod = null;
 
-def on_selection_change(event):
-    if current_view == "flowchart":
-        render_flowchart(graph)
+      // --- DOM Elements ---
+      const tagContainer = document.getElementById("tag-container");
+      const subgraphAdder = document.getElementById("subgraph-adder");
+      const chartBtn = document.getElementById("chart-btn");
+      const mindmapBtn = document.getElementById("mindmap-btn");
 
-# 创建 PyScript 代理
-chart_click_proxy = create_proxy(on_chart_click)
-mindmap_click_proxy = create_proxy(on_mindmap_click)
-selection_proxy = create_proxy(on_selection_change)
+      // --- Functions ---
+      function renderUI() {
+        // 1. Render tags
+        tagContainer.innerHTML = "";
+        for (const option of selectedOptions) {
+          const tag = document.createElement("div");
+          tag.className = "tag";
+          tag.dataset.name = option;
+          const text = document.createElement("span");
+          text.textContent = option;
+          const closeBtn = document.createElement("span");
+          closeBtn.className = "close-btn";
+          closeBtn.textContent = "×";
+          closeBtn.addEventListener("click", () => removeTag(option));
+          tag.appendChild(text);
+          tag.appendChild(closeBtn);
+          tagContainer.appendChild(tag);
+        }
 
-# 绑定事件监听器
-document.getElementById("chart-btn").addEventListener("click", chart_click_proxy)
-document.getElementById("mindmap-btn").addEventListener("click", mindmap_click_proxy)
-document.getElementById("subgraph-selector").addEventListener("change", selection_proxy)
+        // 2. Render dropdown
+        subgraphAdder.innerHTML = "";
+        const placeholder = document.createElement("option");
+        placeholder.textContent = "Add subgraph...";
+        placeholder.value = "";
+        placeholder.disabled = true;
+        placeholder.selected = true;
+        subgraphAdder.appendChild(placeholder);
 
-# --- 页面加载后的初始执行流程 ---
-try:
-    # 1. 导入 graph 模块以注册所有节点
-    importlib.invalidate_caches()
-    importlib.import_module(graph)
+        const availableOptions = allOptions.filter(o => !selectedOptions.includes(o));
+        for (const option of availableOptions) {
+          const optEl = document.createElement("option");
+          optEl.value = option;
+          optEl.textContent = option;
+          subgraphAdder.appendChild(optEl);
+        }
+      }
 
-    # 2. 填充选择器
-    populate_selector()
+      function redrawFlowchart() {
+        if (current_view === "flowchart") {
+          window.pyRenderFlowchart(graph_mod, selectedOptions);
+        }
+      }
 
-    # 3. 渲染初始视图
-    render(graph)
-except Exception:
-    show_error()
+      function addTag(name) {
+        if (name && !selectedOptions.includes(name)) {
+          selectedOptions.push(name);
+          renderUI();
+          redrawFlowchart();
+        }
+      }
 
-# 可选：SSE 热刷新
-try:
-    es = EventSource.new("/events")
-    es.onmessage = lambda ev: window.location.reload()
-except Exception:
-    pass
+      function removeTag(name) {
+        selectedOptions = selectedOptions.filter(o => o !== name);
+        renderUI();
+        redrawFlowchart();
+      }
+
+      // --- Event Listeners ---
+      subgraphAdder.addEventListener("change", (e) => {
+        addTag(e.target.value);
+        // Reset dropdown to placeholder
+        e.target.value = "";
+      });
+
+      chartBtn.addEventListener("click", () => {
+        current_view = "flowchart";
+        chartBtn.classList.add("active");
+        mindmapBtn.classList.remove("active");
+        document.getElementById('subgraph-input-container').style.display = 'flex';
+        redrawFlowchart();
+      });
+
+      mindmapBtn.addEventListener("click", () => {
+        current_view = "mindmap";
+        chartBtn.classList.remove("active");
+        mindmapBtn.classList.add("active");
+        document.getElementById('subgraph-input-container').style.display = 'none';
+        window.pyRenderMindmap(graph_mod);
+      });
+
+      // --- Initialization ---
+      graph_mod = window.pyInitialSetup();
+      if (graph_mod) {
+        allOptions = window.pyGetNodeClasses();
+        renderUI();
+        // Initial render
+        if (current_view === 'flowchart') redrawFlowchart();
+        else window.pyRenderMindmap(graph_mod);
+      }
+
+      // Optional: SSE Hot Reload
+      try {
+        const es = new EventSource("/events");
+        es.onmessage = (ev) => window.location.reload();
+      } catch (e) {}
+    }
+
+    // Listen for the official PyScript event that fires after our code has run
+    addEventListener("py:done", initializeApp);
   </script>
 </body>
 </html>
