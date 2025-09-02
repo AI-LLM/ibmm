@@ -603,7 +603,7 @@ def to_mermaid_flowchart(
         n = REGISTRY.nodes[nid]
         label = n.title
 
-        # === 追加“编辑链接” ===
+        # === 追加"编辑链接" ===
         sf = n.meta.get("src_file")
         sl = n.meta.get("src_line")
         if sf and sl:
@@ -625,7 +625,7 @@ def to_mermaid_flowchart(
     if subgraphs:
         subgraph_root_ids = [_resolve_id(r) for r in subgraphs]
         subgraph_root_ids = [r for r in subgraph_root_ids if r and r in REGISTRY.nodes]
-        
+
         nodes_in_subgraphs = {}  # root_id -> list of node ids
         standalone_nodes = []
 
@@ -636,12 +636,12 @@ def to_mermaid_flowchart(
             while curr:
                 path_to_root.append(curr)
                 curr = REGISTRY.nodes[curr].parent
-            
+
             for ancestor in path_to_root:
                 if ancestor in subgraph_root_ids:
                     found_root = ancestor
                     break
-            
+
             if found_root:
                 if found_root not in nodes_in_subgraphs:
                     nodes_in_subgraphs[found_root] = []
@@ -686,10 +686,22 @@ def to_mermaid_flowchart(
                 return f"{a} -..-> {b}"
         return f'{a} -- "{e.rel}" --> {b}'
 
-    selected_edges = [
-        e for e in REGISTRY.edges
-        if e.rel in include and e.src in selected and e.dst in selected
-    ]
+    # 预处理：找出所有节点之间的关系，检查是否存在semantic关系
+    semantic_relations = set()  # 存储所有已有semantic关系的节点对(src, dst)或(dst, src)
+    for e in REGISTRY.edges:
+        if e.rel in ("answers", "supports", "opposes") and e.src in selected and e.dst in selected:
+            semantic_relations.add((e.src, e.dst))
+            semantic_relations.add((e.dst, e.src))  # 反向也加入，确保contains关系被筛选
+
+    # 过滤边：如果节点间已有semantic关系，则不显示contains关系
+    filtered_edges = []
+    for e in REGISTRY.edges:
+        if e.rel == "contains" and (e.src, e.dst) in semantic_relations:
+            continue  # 跳过已有semantic关系的contains边
+        if e.rel in include and e.src in selected and e.dst in selected:
+            filtered_edges.append(e)
+
+    selected_edges = filtered_edges
     selected_edges.sort(key=lambda e: (0 if e.rel == "contains" else 1, e.rel, e.src, e.dst))
 
     linkstyle_lines = []

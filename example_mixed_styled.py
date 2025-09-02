@@ -10,10 +10,10 @@ node_styles = {
 }
 
 edge_styles = {
-    "supports": "stroke:green,stroke-width:2px;",
-    "opposes":  "stroke:red,stroke-width:2px;",
-    "answers":  "stroke:blue,stroke-width:1.5px,stroke-dasharray: 4 2;",
-    "relates":  "stroke:#6b7280,stroke-dasharray: 2 2;",
+    "supports": "color:green,stroke:green,stroke-width:2px;",
+    "opposes":  "color:red,stroke:red,stroke-width:2px;",
+    "answers":  "color:blue,stroke:blue,stroke-width:2px;",
+    "relates":  "color:gray,stroke:gray,stroke-dasharray: 2 2;",
     # "contains": "stroke:#999,stroke-width:1px;"  # 如需也可加
 }
 

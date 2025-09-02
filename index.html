@@ -52,7 +52,7 @@
       padding: 4px;
     }
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
   <script>mermaid.initialize({ startOnLoad:false, securityLevel:'loose' });</script>
 
   <!-- PyScript core -->
@@ -148,10 +148,10 @@ def render_flowchart_js(graph_mod: str, selected_subgraphs: Object):
             "con":      "fill:#fff1f2,stroke:#ef4444,stroke-width:1px;",
         }
         edge_styles = {
-            "supports": "stroke:green,stroke-width:2px;",
-            "opposes":  "stroke:red,stroke-width:2px;",
-            "answers":  "stroke:blue,stroke-width:1.5px,stroke-dasharray: 4 2;",
-            "relates":  "stroke:#6b7280,stroke-dasharray: 2 2;",
+            "supports": "color:green,stroke:green,stroke-width:2px;",
+            "opposes":  "color:red,stroke:red,stroke-width:2px;",
+            "answers":  "color:blue,stroke:blue,stroke-width:2px;",
+            "relates":  "color:gray,stroke:gray,stroke-dasharray: 2 2;",
         }
 
         mmd = ibmm.to_mermaid_flowchart(
