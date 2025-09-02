@@ -1,5 +1,5 @@
 # example_mindmap.py
-from pymm import Topic, Note, ___, summarize, to_mermaid_mindmap, to_mermaid_flowchart
+from ibmm import Topic, Note, ___, summarize, to_mermaid_mindmap, to_mermaid_flowchart
 
 @Topic("AI 学习平台（路线图）")
 class AI_Learn:
@@ -33,7 +33,7 @@ class AI_Learn:
             class Data_Moat:
                 """专有学习过程数据与标注体系。"""
                 # 与 AI 能力中的 RAG 强关联
-                ___("AI_Learn.Product.AI_Capabilities.RAG") #向下引用，通过字符串
+                +___.AI_Learn.Product.AI_Capabilities.RAG
 
             @Topic("Distribution")
             class Distribution:
@@ -42,7 +42,7 @@ class AI_Learn:
             @Topic("Pedagogy")
             class Pedagogy:
                 """以学习科学为支撑的教学设计（检索练习、间隔复习等）。"""
-                ___(lambda: AI_Learn.Product.Core.Assessment) #向下引用
+                +___.AI_Learn.Product.Core.Assessment
 
     @Topic("产品")
     class Product:
@@ -81,7 +81,7 @@ class AI_Learn:
                 """内容安全、偏见治理与家长控制。"""
 
             # 章节间关联：评测依赖 RAG 检索命中率
-            ___("AI_Learn.Product.Core.Assessment")
+            +___.AI_Learn.Product.Core.Assessment
 
     @Topic("GTM（获客与变现）")
     class GTM:
@@ -100,7 +100,7 @@ class AI_Learn:
             """分层订阅 + 家庭套餐 + 校园授权。"""
 
         # 分发与护城河强关联（类方法写法）
-        Partnerships.___("AI_Learn.Strategy.Moats.Distribution")
+        +Partnerships.___.AI_Learn.Strategy.Moats.Distribution
 
     @Topic("运营")
     class Ops:
@@ -113,7 +113,7 @@ class AI_Learn:
         @Topic("内容审核")
         class Moderation:
             """题目/答案/对话审核，未成年保护。"""
-            ___("AI_Learn.Product.AI_Capabilities.Safety")
+            +___.AI_Learn.Product.AI_Capabilities.Safety
 
     @Topic("风险")
     class Risks:
@@ -122,7 +122,7 @@ class AI_Learn:
         @Topic("隐私")
         class Privacy:
             """数据合规（GDPR/COPPA）；脱敏与最小化。"""
-            ___("AI_Learn.Product.AI_Capabilities.Safety")
+            +___.AI_Learn.Product.AI_Capabilities.Safety
 
         @Topic("偏见")
         class Bias:
@@ -131,7 +131,7 @@ class AI_Learn:
         @Topic("合规")
         class Compliance:
             """考试与认证合规；版权与引用。"""
-            ___("AI_Learn.Product.AI_Capabilities.RAG")
+            +___.AI_Learn.Product.AI_Capabilities.RAG
 
     @Topic("指标")
     class Metrics:
@@ -148,12 +148,4 @@ class AI_Learn:
         # 指标与产品模块的互相关联
         North_Star.___("AI_Learn.Product.Core.Planner")
         Retention.___("AI_Learn.GTM.Pricing")
-    ___(AI_Learn.GTM.Pricing)
-
-# 可选小结（无需输出也行）
-if __name__ == "__main__":
-    #summarize()
-    mm = to_mermaid_mindmap(AI_Learn, show_text=True)
-    print(mm)
-    fc = to_mermaid_flowchart("AI_Learn", include=("contains","relates"))
-    print(fc)
+    +___.AI_Learn.GTM.Pricing
