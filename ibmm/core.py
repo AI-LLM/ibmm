@@ -279,6 +279,16 @@ def auto_edge(child_kind: str, parent_kind: str, rel_name: str) -> None:
     _register_finalizer(_finalizer)
 
 # ---------- 导出 ----------
+
+ALL_NODE_CLASSES_SET = set()
+def _collect_node_class(cls: Any, node_id: str):
+    ALL_NODE_CLASSES_SET.add(cls)
+_register_proxy_binder(_collect_node_class)
+
+def to_node_classes() -> List[Any]:
+    """返回所有被装饰器（如 @Topic）标记的节点类对象列表，列表已排序确保幂等性。"""
+    return sorted(list(ALL_NODE_CLASSES_SET), key=lambda c: c.__qualname__)
+
 def summarize():
     REGISTRY.resolve_all()
     kinds = {}

@@ -38,6 +38,10 @@
     <div class="button-group">
       <button id="chart-btn" class="active">Flowchart</button>
       <button id="mindmap-btn">Mindmap</button>
+      <div style="display: flex; align-items: center; gap: 8px; margin-left: 16px;">
+        <label for="subgraph-selector" style="color: #4b5563; font-weight: 500;">Subgraphs:</label>
+        <select id="subgraph-selector" multiple style="width: 250px; border-radius: 6px; border: 1px solid #d1d5db; padding: 4px;"></select>
+      </div>
     </div>
     <div id="mermaid">Loading…</div>
     <pre id="error"></pre>
@@ -53,26 +57,29 @@ def show_error():
     el.textContent = traceback.format_exc()
     el.style.display = "block"
     document.getElementById("mermaid").textContent = ""
+    print(traceback.format_exc(),file=sys.stderr)
 
-# 当前视图类型
-current_view = "flowchart"  # "flowchart" or "mindmap"
+# --- Globals ---
+current_view = "flowchart"
+ALL_NODE_CLASSES = []
+CLASS_MAP = {}
+# ---------------
 
 def render_mermaid_diagram(mmd_code):
     """渲染 Mermaid 图表"""
     box = document.getElementById("mermaid")
-    # 清空并重新设置内容，使用 innerHTML 以确保完全清空
-    box.innerHTML = ""
-    # 创建新的 pre 元素包含 mermaid 代码
     box.innerHTML = f'<pre class="mermaid">{mmd_code}</pre>'
-    # 使用 mermaid.run() 重新渲染所有 .mermaid 元素
     mermaid.run()
     document.getElementById("error").style.display = "none"
 
 def render_flowchart(graph_mod: str):
     try:
         import ibmm
-        importlib.invalidate_caches()
-        importlib.import_module(graph_mod)  # 只 import 即注册节点/边
+
+        # 从下拉框读取 subgraphs
+        selector = document.getElementById("subgraph-selector")
+        selected_options = [opt.value for opt in selector.selectedOptions]
+        subgraph_objects = [CLASS_MAP[name] for name in selected_options if name in CLASS_MAP]
 
         node_styles = {
             "issue":    "fill:#fff2cc,stroke:#cc7a00,stroke-width:1.5px;",
@@ -86,7 +93,6 @@ def render_flowchart(graph_mod: str):
             "opposes":  "stroke:red,stroke-width:2px;",
             "answers":  "stroke:blue,stroke-width:1.5px,stroke-dasharray: 4 2;",
             "relates":  "stroke:#6b7280,stroke-dasharray: 2 2;",
-            # "contains": "stroke:#999,stroke-width:1px;"  # 如需也可加
         }
 
         mmd = ibmm.to_mermaid_flowchart(
@@ -95,7 +101,7 @@ def render_flowchart(graph_mod: str):
             show_text=True,
             node_styles=node_styles,
             edge_styles=edge_styles,
-            subgraphs=["OS_Question.Yes", "OS_Question.No"]
+            subgraphs=subgraph_objects
         )
         render_mermaid_diagram(mmd)
     except Exception:
@@ -104,12 +110,7 @@ def render_flowchart(graph_mod: str):
 def render_mindmap(graph_mod: str):
     try:
         import ibmm
-        importlib.invalidate_caches()
-        importlib.import_module(graph_mod)  # 只 import 即注册节点/边
-
-        mmd = ibmm.to_mermaid_mindmap(
-            root=None
-        )
+        mmd = ibmm.to_mermaid_mindmap(root=None)
         render_mermaid_diagram(mmd)
     except Exception:
         show_error()
@@ -120,7 +121,9 @@ def render(graph_mod: str):
     else:
         render_mindmap(graph_mod)
 
-# 支持 ?graph=graphs.example_mixed 或 graphs/example_mixed.py
+# --- 初始化和事件处理 ---
+
+# 从 URL 获取 graph 模块名
 qs = window.location.search or ""
 params = {}
 if qs.startswith("?"):
@@ -130,16 +133,33 @@ if qs.startswith("?"):
 graph = params.get("graph") or "graphs.example_mixed"
 if graph.endswith(".py"): graph = graph[:-3].replace("/", ".")
 
-# 设置按钮事件监听器
+# 填充 subgraph 选择器
+def populate_selector():
+    global ALL_NODE_CLASSES, CLASS_MAP
+    try:
+        import ibmm
+        ALL_NODE_CLASSES = ibmm.to_node_classes()
+        print("DEBUG: Classes from to_node_classes():", ALL_NODE_CLASSES)
+        CLASS_MAP = {c.__qualname__: c for c in ALL_NODE_CLASSES}
+
+        selector = document.getElementById("subgraph-selector")
+        selector.innerHTML = ""
+
+        for name in sorted(CLASS_MAP.keys()):
+            option = document.createElement("option")
+            option.value = name
+            option.textContent = name
+            selector.appendChild(option)
+    except Exception:
+        show_error()
+
+# 设置按钮激活状态
 def set_active_button(active_id):
-    chart_btn = document.getElementById("chart-btn")
-    mindmap_btn = document.getElementById("mindmap-btn")
-
-    chart_btn.classList.remove("active")
-    mindmap_btn.classList.remove("active")
-
+    document.getElementById("chart-btn").classList.remove("active")
+    document.getElementById("mindmap-btn").classList.remove("active")
     document.getElementById(active_id).classList.add("active")
 
+# 定义事件回调
 def on_chart_click(event):
     global current_view
     current_view = "flowchart"
@@ -152,17 +172,35 @@ def on_mindmap_click(event):
     set_active_button("mindmap-btn")
     render(graph)
 
-# 使用 create_proxy 创建持久的回调函数代理
+def on_selection_change(event):
+    if current_view == "flowchart":
+        render_flowchart(graph)
+
+# 创建 PyScript 代理
 chart_click_proxy = create_proxy(on_chart_click)
 mindmap_click_proxy = create_proxy(on_mindmap_click)
+selection_proxy = create_proxy(on_selection_change)
 
+# 绑定事件监听器
 document.getElementById("chart-btn").addEventListener("click", chart_click_proxy)
 document.getElementById("mindmap-btn").addEventListener("click", mindmap_click_proxy)
+document.getElementById("subgraph-selector").addEventListener("change", selection_proxy)
 
-# 初始渲染
-render(graph)
+# --- 页面加载后的初始执行流程 ---
+try:
+    # 1. 导入 graph 模块以注册所有节点
+    importlib.invalidate_caches()
+    importlib.import_module(graph)
 
-# 可选：SSE 热刷新（静态托管无 /events 时就连不上，页面照常工作）
+    # 2. 填充选择器
+    populate_selector()
+
+    # 3. 渲染初始视图
+    render(graph)
+except Exception:
+    show_error()
+
+# 可选：SSE 热刷新
 try:
     es = EventSource.new("/events")
     es.onmessage = lambda ev: window.location.reload()

@@ -4,7 +4,7 @@ from .core import (
     # 基础 mind map
     Topic, Title, NodeKind, Note, Question, ___,
     # 导出/工具
-    to_mermaid_mindmap, to_mermaid_flowchart, summarize,
+    to_mermaid_mindmap, to_mermaid_flowchart, to_node_classes, summarize,
     # 可选：内部数据结构（需要时再用）
     REGISTRY, Node, Edge,
 )
@@ -18,7 +18,7 @@ from .ibis import (
 __all__ = [
     # core
     "Topic", "Title", "NodeKind", "Note", "Question", "___",
-    "to_mermaid_mindmap", "to_mermaid_flowchart", "summarize",
+    "to_mermaid_mindmap", "to_mermaid_flowchart", "to_node_classes", "summarize",
     "REGISTRY", "Node", "Edge",
     # ibis
     "Issue", "Position", "Pro", "Con", "Idea",
