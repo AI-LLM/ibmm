@@ -13,7 +13,7 @@ edge_styles = {
     "supports": "color:green,stroke:green,stroke-width:2px;",
     "opposes":  "color:red,stroke:red,stroke-width:2px;",
     "answers":  "color:blue,stroke:blue,stroke-width:2px;",
-    "relates":  "color:gray,stroke:gray,stroke-dasharray: 2 2;",
+    "relates":  "color:gray,stroke:gray,stroke-width:2px,stroke-dasharray: 2 2;",
     # "contains": "stroke:#999,stroke-width:1px;"  # 如需也可加
 }
 

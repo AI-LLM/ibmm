@@ -675,7 +675,7 @@ def to_mermaid_flowchart(
     # 边
     def edge_line(e):
         a, b = safe_id(e.src), safe_id(e.dst)
-        if e.rel == "contains": return f"{a} --> {b}"
+        if e.rel == "contains": return f"{a} --- {b}"
         if e.rel == "relates":
             # 若有自定义标签则用标签，否则不显示标签（仅显示点划线）
             if hasattr(e, "label") and e.label and e.label.strip():

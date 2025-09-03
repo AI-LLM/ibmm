@@ -151,7 +151,7 @@ def render_flowchart_js(graph_mod: str, selected_subgraphs: Object):
             "supports": "color:green,stroke:green,stroke-width:2px;",
             "opposes":  "color:red,stroke:red,stroke-width:2px;",
             "answers":  "color:blue,stroke:blue,stroke-width:2px;",
-            "relates":  "color:gray,stroke:gray,stroke-dasharray: 2 2;",
+            "relates":  "color:gray,stroke:gray,stroke-width:2px, stroke-dasharray: 2 2;",
         }
 
         mmd = ibmm.to_mermaid_flowchart(
