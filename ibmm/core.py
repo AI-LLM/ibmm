@@ -726,10 +726,38 @@ def to_mermaid_flowchart(
     for nid in ordered_nodes:
         lines.append(f"class {safe_id(nid)} {REGISTRY.nodes[nid].kind};")
 
+    # 找出所有有 semantic 关系的节点
+    semantic_nodes = set()  # 存储所有有 semantic 关系（作为源节点）的节点
+    for e in REGISTRY.edges:
+        if e.rel in ("answers", "supports", "opposes") and e.src in selected and e.dst in selected:
+            semantic_nodes.add(e.src)
+
+    # 找出有 semantic 关系的节点的所有子孙节点
+    def get_all_descendants(node_id: str) -> set:
+        """获取节点的所有子孙节点"""
+        descendants = set()
+        queue = [node_id]
+        while queue:
+            curr = queue.pop(0)
+            for child_id in children.get(curr, []):
+                if child_id not in descendants:
+                    descendants.add(child_id)
+                    queue.append(child_id)
+        return descendants
+
+    semantic_descendants = set()
+    for semantic_node in semantic_nodes:
+        semantic_descendants.update(get_all_descendants(semantic_node))
+
     # 边
     def edge_line(e):
         a, b = safe_id(e.src), safe_id(e.dst)
-        if e.rel == "contains": return f"{a} --- {b}"
+        if e.rel == "contains":
+            # 如果源节点是有semantic关系的节点或其子孙，反转方向
+            if e.src in semantic_nodes or e.src in semantic_descendants:
+                return f"{b} --- {a}"  # 反转方向
+            else:
+                return f"{a} --- {b}"  # 正常方向
         if e.rel == "relates":
             # 若有自定义标签则用标签，否则不显示标签（仅显示点划线）
             if hasattr(e, "label") and e.label and e.label.strip():
