@@ -47,7 +47,7 @@ class Target:
        pass
     @Topic("实现")
     class Implementation:
-        pass
+        """工程师学习能力强，AI擅长教"""
     @Topic("采购")
     class Procurement:
        pass

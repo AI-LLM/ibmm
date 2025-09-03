@@ -626,39 +626,93 @@ def to_mermaid_flowchart(
         subgraph_root_ids = [_resolve_id(r) for r in subgraphs]
         subgraph_root_ids = [r for r in subgraph_root_ids if r and r in REGISTRY.nodes]
 
-        nodes_in_subgraphs = {}  # root_id -> list of node ids
+        # 建立subgraph根节点之间的祖先-后代关系
+        def is_descendant(node_id: str, ancestor_id: str) -> bool:
+            """检查node_id是否是ancestor_id的后代"""
+            curr = node_id
+            while curr:
+                if curr == ancestor_id:
+                    return True
+                curr = REGISTRY.nodes[curr].parent
+            return False
+
+        # 构建subgraph的嵌套层次结构
+        class SubgraphTree:
+            def __init__(self, root_id: str):
+                self.root_id = root_id
+                self.children = []  # 存储子subgraph
+                self.nodes = []     # 存储属于这个subgraph但不属于任何子subgraph的节点
+
+        # 创建所有subgraph树节点
+        subgraph_trees = {root_id: SubgraphTree(root_id) for root_id in subgraph_root_ids}
+
+        # 建立subgraph之间的父子关系
+        for root_id in subgraph_root_ids:
+            for other_id in subgraph_root_ids:
+                if root_id != other_id and is_descendant(other_id, root_id):
+                    # other_id是root_id的后代，所以other对应的subgraph应该是root对应subgraph的子级
+                    # 但我们只建立直接父子关系，不建立祖孙关系
+                    is_direct_child = True
+                    for third_id in subgraph_root_ids:
+                        if (third_id != root_id and third_id != other_id and
+                            is_descendant(other_id, third_id) and is_descendant(third_id, root_id)):
+                            # 存在中间层级，other_id不是root_id的直接子级
+                            is_direct_child = False
+                            break
+                    if is_direct_child:
+                        subgraph_trees[root_id].children.append(subgraph_trees[other_id])
+
+        # 找到顶层subgraph（没有父级subgraph的）
+        top_level_subgraphs = []
+        for tree in subgraph_trees.values():
+            is_top_level = True
+            for other_tree in subgraph_trees.values():
+                if tree in other_tree.children:
+                    is_top_level = False
+                    break
+            if is_top_level:
+                top_level_subgraphs.append(tree)
+
+        # 为每个节点分配到对应的subgraph
         standalone_nodes = []
 
         for nid in ordered_nodes:
-            found_root = None
-            curr = nid
-            path_to_root = []
-            while curr:
-                path_to_root.append(curr)
-                curr = REGISTRY.nodes[curr].parent
+            found_subgraph = None
+            # 找到这个节点应该属于的最深层subgraph
+            for root_id in subgraph_root_ids:
+                if is_descendant(nid, root_id):
+                    if found_subgraph is None or is_descendant(root_id, found_subgraph):
+                        found_subgraph = root_id
 
-            for ancestor in path_to_root:
-                if ancestor in subgraph_root_ids:
-                    found_root = ancestor
-                    break
-
-            if found_root:
-                if found_root not in nodes_in_subgraphs:
-                    nodes_in_subgraphs[found_root] = []
-                nodes_in_subgraphs[found_root].append(nid)
+            if found_subgraph:
+                subgraph_trees[found_subgraph].nodes.append(nid)
             else:
                 standalone_nodes.append(nid)
 
+        # 渲染函数
+        def render_subgraph_tree(tree: SubgraphTree, indent: str = ""):
+            subgraph_title = REGISTRY.nodes[tree.root_id].title
+            lines.append(f'{indent}subgraph "{esc_label_quotes(subgraph_title)}"')
+
+            # 先渲染直接属于这个subgraph的节点
+            for nid in tree.nodes:
+                lines.append(f"{indent}  {render_node_definition(nid)}")
+
+            # 然后渲染子subgraph
+            sorted_children = sorted(tree.children, key=lambda t: REGISTRY.nodes[t.root_id].title.lower())
+            for child_tree in sorted_children:
+                render_subgraph_tree(child_tree, indent + "  ")
+
+            lines.append(f"{indent}end")
+
+        # 渲染独立节点
         for nid in standalone_nodes:
             lines.append(render_node_definition(nid))
 
-        sorted_subgraph_roots = sorted(nodes_in_subgraphs.keys(), key=lambda r: REGISTRY.nodes[r].title.lower())
-        for root_id in sorted_subgraph_roots:
-            subgraph_title = REGISTRY.nodes[root_id].title
-            lines.append(f'subgraph "{esc_label_quotes(subgraph_title)}"')
-            for nid in nodes_in_subgraphs[root_id]:
-                lines.append(f"  {render_node_definition(nid)}")
-            lines.append("end")
+        # 渲染顶层subgraph
+        sorted_top_level = sorted(top_level_subgraphs, key=lambda t: REGISTRY.nodes[t.root_id].title.lower())
+        for tree in sorted_top_level:
+            render_subgraph_tree(tree)
     else:
         for nid in ordered_nodes:
             lines.append(render_node_definition(nid))
