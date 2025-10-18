@@ -216,19 +216,19 @@ I0 → I1 (auto-numbered position)
 II.I0 → II.I1 (auto-numbered sub-issue position)
 I1+ → I1+1 (auto-numbered pro)
 I1- → I1-1 (auto-numbered con)
-II. → II.I (auto-numbered sub-issue)">I 效果衡量。
-I1 采样现有系统中一个项目/模块/场景的统计数据作为基准。
-I1+ 可尽快获得。
-I1- 更新到codearts就会带来变化使基准不准确。
-I1-1I 是问题需解决。
-I1-1I1 同时开启codearts和codearts+AI支持的两个项目做对比。
-II 策略
-II.I 不影响生产团队交付
-II.II 模型有更快的进步节奏
-II.III 通用最佳实践Agent厂商有更快的进步节奏
-II.I1,II.II1,II.III1 转变思维模式，使用最新AI模型和Agent来解决问题
-II.II0 工作重点为Context Engineering
-II. 更多策略</textarea>
+II. → II.I (auto-numbered sub-issue)">I The 1st issue
+I0 Position 1 foe the 1st issue (should be auto-numbered to I1)
+I1+ Why Position 1 is good (should be auto-numbered to I1+1)
+I1- Why Position 1 is bad (should be auto-numbered to I1-1)
+I1-1I Bad is an issue
+I1-1I0 How to solve Bad (should be auto-numbered to I1-1I1)
+II 第二个问题
+II.I 分解第二个问题
+II.II 分解第二个问题
+II.III 分解第二个问题
+II.I1,II.II1,II.III1 对三个子问题的对策
+II.II0 对第二个子问题的对策（应该自动编号为II.II1）
+II. 更多子问题（应该自动编号为II.IV）</textarea>
             <button onclick="generateDiagram()">Generate Diagram</button>
             <button onclick="autoNumber()">Auto-Number</button>
             <button onclick="copyInputText()">Copy</button>
@@ -922,6 +922,31 @@ II. 更多策略</textarea>
 
         const parser = new IBISParser();
 
+        // Function to load file content from URL parameter
+        function loadFileFromParam() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const filePath = urlParams.get('f');
+            
+            if (filePath) {
+                fetch(filePath)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`Failed to load file: ${response.status} ${response.statusText}`);
+                        }
+                        return response.text();
+                    })
+                    .then(data => {
+                        document.getElementById('inputText').value = data;
+                        // Generate diagram after loading file
+                        generateDiagram();
+                    })
+                    .catch(error => {
+                        console.error('Error loading file:', error);
+                        alert(`Error loading file: ${error.message}`);
+                    });
+            }
+        }
+
         function copyInputText() {
             const inputText = document.getElementById('inputText');
             inputText.select();
@@ -1026,6 +1051,9 @@ II. 更多策略</textarea>
 
         // Generate initial diagram
         window.addEventListener('load', () => {
+            // Load file from URL parameter if present
+            loadFileFromParam();
+            
             // Don't auto-number on load if text already has numbers
             // This allows the example to demonstrate auto-numbering
             setTimeout(generateDiagram, 100);

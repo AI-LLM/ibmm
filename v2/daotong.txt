@@ -1,0 +1,12 @@
+I 效果衡量。
+I1 采样现有系统中一个项目/模块/场景的统计数据作为基准。
+I1+1 可尽快获得。
+I1-1 更新到codearts就会带来变化使基准不准确。
+I1-1I 是问题需解决。
+I1-1I1 同时开启codearts和codearts+AI支持的两个项目做对比。
+II 策略
+II.I 不影响生产团队交付
+II.II 模型有更快的进步节奏
+II.III 通用最佳实践Agent厂商有更快的进步节奏
+II.I1,II.II1,II.III1 转变思维模式，使用最新AI模型和Agent来解决问题
+II.II2 工作重点为Context Engineering
