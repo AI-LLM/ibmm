@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IBIS Diagram Generator</title>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ 
+            startOnLoad: true,
+            theme: 'default',
+            flowchart: {
+                curve: 'basis',
+                padding: 20,
+                nodeSpacing: 50,
+                rankSpacing: 80
+            }
+        });
+        window.mermaid = mermaid;
+    </script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #007acc;
+            padding-bottom: 10px;
+            margin-bottom: 30px;
+        }
+        
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        
+        @media (max-width: 968px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .input-section {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .output-section {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            min-height: 400px;
+        }
+        
+        h2 {
+            color: #555;
+            margin-top: 0;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+        
+        textarea {
+            width: 100%;
+            min-height: 400px;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+        
+        textarea:focus {
+            outline: none;
+            border-color: #007acc;
+            box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.1);
+        }
+        
+        button {
+            background: #007acc;
+            color: white;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            margin-top: 15px;
+            transition: background 0.2s;
+        }
+        
+        button:hover {
+            background: #005a9e;
+        }
+        
+        button:active {
+            transform: translateY(1px);
+        }
+        
+        #diagram {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 30px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            min-height: 400px;
+            overflow: auto;
+        }
+        
+        #diagram:empty::before {
+            content: "Diagram will appear here after processing...";
+            color: #999;
+            font-style: italic;
+        }
+        
+        .error {
+            color: #d32f2f;
+            background: #ffebee;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+            border-left: 3px solid #d32f2f;
+        }
+        
+        .info {
+            background: #e3f2fd;
+            color: #1565c0;
+            padding: 12px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            border-left: 3px solid #1976d2;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        .legend {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 20px;
+            border: 1px solid #e0e0e0;
+        }
+        
+        .legend h3 {
+            margin-top: 0;
+            color: #666;
+            font-size: 1em;
+        }
+        
+        .legend-item {
+            display: inline-block;
+            margin-right: 20px;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+        
+        .legend-item::before {
+            content: "●";
+            margin-right: 5px;
+        }
+        
+        .issue::before { color: #ff9800; }
+        .position::before { color: #2196f3; }
+        .pro::before { color: #4caf50; }
+        .con::before { color: #f44336; }
+        
+        .debug {
+            background: #f5f5f5;
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>IBIS Diagram Generator</h1>
+    
+    <div class="info">
+        <strong>Notation Guide:</strong><br>
+        • Roman numerals (I, II, III...) = Issues<br>
+        • Roman.Roman (I.I, I.II...) = Sub-issues<br>
+        • Roman+Number (I1, II2...) = Positions (solutions)<br>
+        • +Number = Pros (arguments for)<br>
+        • -Number = Cons (arguments against)<br>
+        • Use commas for multiple connections (e.g., "I1,II1 Shared solution")<br><br>
+        <strong>Auto-numbering:</strong> Use shortcuts like "I1+" or "I1-" and the system will automatically add the next available number (e.g., "I1+1", "I1-2")
+    </div>
+    
+    <div class="container">
+        <div class="input-section">
+            <h2>Input IBIS Text</h2>
+            <textarea id="inputText" placeholder="Enter IBIS notation text here...
+
+Example shortcuts:
+I1+ → I1+1 (auto-numbered)
+I1- → I1-1 (auto-numbered)
+II. → II.I (auto-numbered)">I 效果衡量。
+I1 采样现有系统中一个项目/模块/场景的统计数据作为基准。
+I1+1 可尽快获得。
+I1-1 更新到codearts就会带来变化使基准不准确。
+I1-1I 是问题需解决。
+I1-1I1 同时开启codearts和codearts+AI支持的两个项目做对比。
+II 策略
+II.I 不影响生产团队交付
+II.II 模型有更快的进步节奏
+II.III 通用最佳实践Agent厂商有更快的进步节奏
+II.I1,II.II1,II.III1 转变思维模式，使用最新AI模型和Agent来解决问题
+II.II2 工作重点为Context Engineering</textarea>
+            <button onclick="generateDiagram()">Generate Diagram</button>
+            <button onclick="autoNumber()">Auto-Number</button>
+            <button onclick="testParsing()">Test Parsing</button>
+        </div>
+        
+        <div class="output-section">
+            <h2>Processed Text (with auto-numbering)</h2>
+            <textarea id="outputText" readonly></textarea>
+            <div id="debug" class="debug" style="display:none;"></div>
+        </div>
+    </div>
+    
+    <div class="legend">
+        <h3>Node Types:</h3>
+        <span class="legend-item issue">Issue (Question/Problem)</span>
+        <span class="legend-item position">Position (Solution/Alternative)</span>
+        <span class="legend-item pro">Pro (Argument For)</span>
+        <span class="legend-item con">Con (Argument Against)</span>
+    </div>
+    
+    <div id="diagram"></div>
+    
+    <script>
+        class IBISParser {
+            constructor() {
+                this.nodes = new Map();
+                this.edges = [];
+                this.nodeCounter = 0;
+                this.indexCounts = new Map();
+            }
+            
+            parseRomanNumeral(roman) {
+                const romanMap = {
+                    'I': 1, 'V': 5, 'X': 10, 'L': 50,
+                    'C': 100, 'D': 500, 'M': 1000
+                };
+                
+                let result = 0;
+                for (let i = 0; i < roman.length; i++) {
+                    const current = romanMap[roman[i]];
+                    const next = romanMap[roman[i + 1]];
+                    
+                    if (next && current < next) {
+                        result -= current;
+                    } else {
+                        result += current;
+                    }
+                }
+                return result;
+            }
+            
+            isRomanNumeral(str) {
+                return /^[IVXLCDM]+$/.test(str);
+            }
+            
+            parseIndex(index) {
+                // Remove trailing punctuation for parsing
+                const cleanIndex = index.replace(/[。，,、？?！!；;：:）)】]】$/, '').trim();
+                
+                // Pattern matching from most specific to least specific
+                let result = null;
+                
+                // Pattern 1: Position for sub-issue from con: I1-1I1
+                const pattern1 = cleanIndex.match(/^([IVXLCDM]+)(\d+)([\+\-])(\d+)([IVXLCDM]+)(\d+)$/);
+                if (pattern1) {
+                    return {
+                        type: 'position',
+                        baseIssue: pattern1[1],
+                        basePosition: pattern1[2],
+                        argType: pattern1[3],
+                        argNum: pattern1[4],
+                        subIssue: pattern1[5],
+                        positionNum: pattern1[6],
+                        full: cleanIndex,
+                        parent: `${pattern1[1]}${pattern1[2]}${pattern1[3]}${pattern1[4]}${pattern1[5]}` // I1-1I
+                    };
+                }
+                
+                // Pattern 2: Issue from con/pro: I1-1I or I1+1I
+                const pattern2 = cleanIndex.match(/^([IVXLCDM]+)(\d+)([\+\-])(\d+)([IVXLCDM]+)$/);
+                if (pattern2) {
+                    return {
+                        type: 'issue',
+                        baseIssue: pattern2[1],
+                        basePosition: pattern2[2],
+                        argType: pattern2[3],
+                        argNum: pattern2[4],
+                        newIssue: pattern2[5],
+                        full: cleanIndex,
+                        parent: `${pattern2[1]}${pattern2[2]}${pattern2[3]}${pattern2[4]}` // I1-1
+                    };
+                }
+                
+                // Pattern 3: Pro argument: I1+1
+                const pattern3 = cleanIndex.match(/^([IVXLCDM]+)(\d+)\+(\d+)$/);
+                if (pattern3) {
+                    return {
+                        type: 'pro',
+                        issue: pattern3[1],
+                        position: pattern3[2],
+                        number: pattern3[3],
+                        full: cleanIndex,
+                        parent: `${pattern3[1]}${pattern3[2]}` // I1
+                    };
+                }
+                
+                // Pattern 4: Con argument: I1-1
+                const pattern4 = cleanIndex.match(/^([IVXLCDM]+)(\d+)\-(\d+)$/);
+                if (pattern4) {
+                    return {
+                        type: 'con',
+                        issue: pattern4[1],
+                        position: pattern4[2],
+                        number: pattern4[3],
+                        full: cleanIndex,
+                        parent: `${pattern4[1]}${pattern4[2]}` // I1
+                    };
+                }
+                
+                // Pattern 5: Issue decomposition: II.I, II.II, II.III
+                const pattern5 = cleanIndex.match(/^([IVXLCDM]+)\.([IVXLCDM]+)$/);
+                if (pattern5) {
+                    return {
+                        type: 'issue',
+                        parentIssue: pattern5[1],
+                        subIssue: pattern5[2],
+                        full: cleanIndex,
+                        parent: pattern5[1] // II
+                    };
+                }
+                
+                // Pattern 6: Position for sub-issue: II.I1, II.II2
+                const pattern6 = cleanIndex.match(/^([IVXLCDM]+)\.([IVXLCDM]+)(\d+)$/);
+                if (pattern6) {
+                    return {
+                        type: 'position',
+                        parentIssue: pattern6[1],
+                        subIssue: pattern6[2],
+                        positionNum: pattern6[3],
+                        full: cleanIndex,
+                        parent: `${pattern6[1]}.${pattern6[2]}` // II.I
+                    };
+                }
+                
+                // Pattern 7: Position: I1, II2
+                const pattern7 = cleanIndex.match(/^([IVXLCDM]+)(\d+)$/);
+                if (pattern7) {
+                    return {
+                        type: 'position',
+                        issue: pattern7[1],
+                        number: pattern7[2],
+                        full: cleanIndex,
+                        parent: pattern7[1] // I
+                    };
+                }
+                
+                // Pattern 8: Simple issue: I, II, III
+                const pattern8 = cleanIndex.match(/^([IVXLCDM]+)$/);
+                if (pattern8) {
+                    return {
+                        type: 'issue',
+                        issue: pattern8[1],
+                        full: cleanIndex
+                    };
+                }
+                
+                return null;
+            }
+            
+            parse(text) {
+                this.nodes.clear();
+                this.edges = [];
+                this.nodeCounter = 0;
+                
+                const lines = text.split('\n').filter(line => line.trim());
+                console.log('=== Starting parse ===');
+                console.log('Total lines to parse:', lines.length);
+                
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    if (!line) continue;
+                    
+                    console.log(`Line ${i+1}: "${line}"`);
+                    
+                    // Try to match the index pattern
+                    // Match indices (can be comma-separated) followed by label
+                    // Indices can contain roman numerals, numbers, dots, +, -
+                    // First try with mandatory space
+                    let match = line.match(/^([IVXLCDM][^\s\u4e00-\u9fa5]*(?:\s*,\s*[IVXLCDM][^\s\u4e00-\u9fa5]*)*)\s+(.+)$/);
+                    
+                    // Also try without space for edge cases
+                    if (!match) {
+                        match = line.match(/^([IVXLCDM]+)([^IVXLCDM\s].*)$/);
+                        if (match && match[2] && !match[2].match(/^[0-9\.\+\-]/)) {
+                            // This is likely a simple issue like "II策略"
+                            match = [match[0], match[1], match[2]];
+                        } else {
+                            match = null;
+                        }
+                    }
+                    
+                    if (!match) {
+                        console.log(`  No match for line ${i+1}`);
+                        continue;
+                    }
+                    
+                    const indicesStr = match[1];
+                    const label = match[2].trim();
+                    console.log(`  Indices: "${indicesStr}", Label: "${label}"`);
+                    
+                    // Handle multiple indices (comma-separated)
+                    const indices = indicesStr.split(/\s*,\s*/).map(idx => idx.trim()).filter(idx => idx.length > 0);
+                    console.log(`  Split indices:`, indices);
+                    
+                    // For multi-index nodes, create a single shared node
+                    if (indices.length > 1) {
+                        // For multi-index like "II.I1,II.II1,II.III1", create one node with multiple connections
+                        const nodeId = indicesStr.replace(/\s+/g, ''); // Use the full index string as ID
+                        const nodeLabel = `${indicesStr} ${label}`;
+                        
+                        // Determine type based on first index
+                        const firstParsed = this.parseIndex(indices[0]);
+                        if (!firstParsed) {
+                            console.log(`  Failed to parse first index of multi-index: ${indices[0]}`);
+                            continue;
+                        }
+                        
+                        const nodeType = firstParsed.type;
+                        console.log(`  Creating multi-index node: ${nodeId}, type: ${nodeType}`);
+                        
+                        // Create the single multi-index node
+                        this.nodes.set(nodeId, {
+                            id: nodeId,
+                            type: nodeType,
+                            label: nodeLabel,
+                            isMulti: true
+                        });
+                        
+                        // Create edges to all parent nodes
+                        for (const idx of indices) {
+                            const parsed = this.parseIndex(idx);
+                            if (!parsed) {
+                                console.log(`  Failed to parse index in multi-index: ${idx}`);
+                                continue;
+                            }
+                            
+                            if (parsed.parent) {
+                                console.log(`    Adding edge from ${nodeId} to ${parsed.parent}`);
+                                this.edges.push({
+                                    from: nodeId,
+                                    to: parsed.parent,
+                                    type: nodeType === 'position' ? 'responds-to' : 
+                                          nodeType === 'pro' ? 'supports' : 
+                                          nodeType === 'con' ? 'objects-to' : 'relates-to'
+                                });
+                            }
+                        }
+                    } else {
+                        // Single index node
+                        const index = indices[0];
+                        const parsed = this.parseIndex(index);
+                        
+                        if (!parsed) {
+                            console.log(`  Failed to parse index: ${index}`);
+                            continue;
+                        }
+                        
+                        const nodeId = index;
+                        const nodeType = parsed.type;
+                        const nodeLabel = `${index} ${label}`;
+                        
+                        console.log(`  Creating single node: ${nodeId}, type: ${nodeType}`);
+                        
+                        // Create node
+                        this.nodes.set(nodeId, {
+                            id: nodeId,
+                            type: nodeType,
+                            label: nodeLabel,
+                            parsed: parsed
+                        });
+                        
+                        // Create edges based on relationships
+                        if (parsed.parent) {
+                            let edgeType = 'relates-to';
+                            
+                            if (nodeType === 'position') {
+                                edgeType = 'responds-to';
+                            } else if (nodeType === 'pro') {
+                                edgeType = 'supports';
+                            } else if (nodeType === 'con') {
+                                edgeType = 'objects-to';
+                            } else if (nodeType === 'issue' && (parsed.subIssue || parsed.newIssue)) {
+                                edgeType = 'elaborates';
+                            }
+                            
+                            this.edges.push({
+                                from: nodeId,
+                                to: parsed.parent,
+                                type: edgeType
+                            });
+                        }
+                    }
+                }
+                
+                // Debug output
+                console.log('=== Parse complete ===');
+                console.log(`Total nodes created: ${this.nodes.size}`);
+                console.log('Nodes:', Array.from(this.nodes.keys()));
+                console.log('Full node details:', Array.from(this.nodes.entries()));
+                console.log('Edges:', this.edges);
+                
+                return this.generateMermaidCode();
+            }
+            
+            sanitizeLabel(label) {
+                // Escape special characters for Mermaid
+                return label
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&apos;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/\[/g, '［')
+                    .replace(/\]/g, '］')
+                    .replace(/\{/g, '｛')
+                    .replace(/\}/g, '｝')
+                    .replace(/\(/g, '（')
+                    .replace(/\)/g, '）')
+                    .replace(/\|/g, '｜')
+                    .replace(/\#/g, '＃');
+            }
+            
+            generateMermaidCode() {
+                let mermaidCode = 'graph TD\n';
+                
+                // Create a map to store safe IDs
+                const safeIdMap = new Map();
+                let idCounter = 0;
+                
+                // Define nodes with proper shapes and styles
+                for (const [nodeId, node] of this.nodes) {
+                    // Create a safe ID for Mermaid
+                    const safeId = `node${idCounter++}`;
+                    safeIdMap.set(nodeId, safeId);
+                    
+                    const safeLabel = this.sanitizeLabel(node.label);
+                    
+                    switch (node.type) {
+                        case 'issue':
+                            mermaidCode += `    ${safeId}["❓ ${safeLabel}"]\n`;
+                            mermaidCode += `    style ${safeId} fill:#fff3e0,stroke:#ff9800,stroke-width:2px\n`;
+                            break;
+                        case 'position':
+                            mermaidCode += `    ${safeId}("💡 ${safeLabel}")\n`;
+                            mermaidCode += `    style ${safeId} fill:#e3f2fd,stroke:#2196f3,stroke-width:2px\n`;
+                            break;
+                        case 'pro':
+                            mermaidCode += `    ${safeId}{{"✅ ${safeLabel}"}}\n`;
+                            mermaidCode += `    style ${safeId} fill:#e8f5e9,stroke:#4caf50,stroke-width:2px\n`;
+                            break;
+                        case 'con':
+                            mermaidCode += `    ${safeId}{{"❌ ${safeLabel}"}}\n`;
+                            mermaidCode += `    style ${safeId} fill:#ffebee,stroke:#f44336,stroke-width:2px\n`;
+                            break;
+                    }
+                }
+                
+                // Add edges with labels
+                for (const edge of this.edges) {
+                    const fromId = safeIdMap.get(edge.from);
+                    const toId = safeIdMap.get(edge.to);
+                    
+                    // Make sure both nodes exist
+                    if (fromId && toId) {
+                        switch (edge.type) {
+                            case 'responds-to':
+                                mermaidCode += `    ${fromId} -->|responds to| ${toId}\n`;
+                                break;
+                            case 'supports':
+                                mermaidCode += `    ${fromId} -->|supports| ${toId}\n`;
+                                break;
+                            case 'objects-to':
+                                mermaidCode += `    ${fromId} -->|objects to| ${toId}\n`;
+                                break;
+                            case 'elaborates':
+                                mermaidCode += `    ${fromId} -->|elaborates| ${toId}\n`;
+                                break;
+                            default:
+                                mermaidCode += `    ${fromId} --> ${toId}\n`;
+                        }
+                    }
+                }
+                
+                // Display node count for debugging
+                document.getElementById('debug').innerHTML = `Nodes: ${this.nodes.size}, Edges: ${this.edges.length}`;
+                document.getElementById('debug').style.display = 'block';
+                
+                return mermaidCode;
+            }
+            
+            autoNumber(text) {
+                const lines = text.split('\n');
+                const processedLines = [];
+                
+                // First pass: collect all existing indices
+                const existingIndices = new Set();
+                const indexGroups = new Map(); // Track groups like "I1+", "I1-", "II.", etc.
+                
+                for (const line of lines) {
+                    const match = line.match(/^([IVXLCDM][^\s\u4e00-\u9fa5]*)\s*.*$/);
+                    if (match) {
+                        const index = match[1].trim();
+                        existingIndices.add(index);
+                        
+                        // Parse and categorize the index
+                        const parsed = this.parseIndex(index);
+                        if (parsed) {
+                            // Track pros for positions (e.g., "I1+1" goes in group "I1+")
+                            if (parsed.type === 'pro' && parsed.issue && parsed.position && parsed.number) {
+                                const groupKey = `${parsed.issue}${parsed.position}+`;
+                                if (!indexGroups.has(groupKey)) {
+                                    indexGroups.set(groupKey, []);
+                                }
+                                indexGroups.get(groupKey).push(parseInt(parsed.number));
+                            }
+                            // Track cons for positions (e.g., "I1-1" goes in group "I1-")
+                            else if (parsed.type === 'con' && parsed.issue && parsed.position && parsed.number) {
+                                const groupKey = `${parsed.issue}${parsed.position}-`;
+                                if (!indexGroups.has(groupKey)) {
+                                    indexGroups.set(groupKey, []);
+                                }
+                                indexGroups.get(groupKey).push(parseInt(parsed.number));
+                            }
+                            // Track sub-issues (e.g., "II.I" goes in group "II.")
+                            else if (parsed.type === 'issue' && parsed.parentIssue && parsed.subIssue) {
+                                const groupKey = `${parsed.parentIssue}.`;
+                                if (!indexGroups.has(groupKey)) {
+                                    indexGroups.set(groupKey, []);
+                                }
+                                const subValue = this.parseRomanNumeral(parsed.subIssue);
+                                indexGroups.get(groupKey).push(subValue);
+                            }
+                            // Track positions for issues (e.g., "I1" goes in group "I")
+                            else if (parsed.type === 'position' && parsed.issue && parsed.number) {
+                                const groupKey = parsed.issue;
+                                if (!indexGroups.has(groupKey)) {
+                                    indexGroups.set(groupKey, []);
+                                }
+                                indexGroups.get(groupKey).push(parseInt(parsed.number));
+                            }
+                        }
+                    }
+                }
+                
+                // Second pass: process lines with auto-numbering
+                for (const line of lines) {
+                    let processed = line;
+                    
+                    // Match patterns that need auto-numbering
+                    // Pattern 1: "I1+" or "I1-" without number (but not "I1-1I" patterns)
+                    const proConMatch = line.match(/^([IVXLCDM]+\d+)([\+\-])(\s+.*)$/);
+                    if (proConMatch) {
+                        // Check if this already has a number or is part of a complex pattern
+                        const restText = proConMatch[3].trim();
+                        if (!/^[0-9]/.test(restText)) {
+                            const prefix = proConMatch[1];
+                            const operator = proConMatch[2];
+                            const rest = proConMatch[3];
+                            
+                            const groupKey = `${prefix}${operator}`;
+                            const existing = indexGroups.get(groupKey) || [];
+                            const nextNum = existing.length > 0 ? Math.max(...existing) + 1 : 1;
+                            
+                            processed = `${prefix}${operator}${nextNum}${rest}`;
+                            
+                            // Update the group for subsequent lines
+                            if (!indexGroups.has(groupKey)) {
+                                indexGroups.set(groupKey, []);
+                            }
+                            indexGroups.get(groupKey).push(nextNum);
+                        }
+                    }
+                    
+                    // Pattern 2: "II." without sub-issue number
+                    const subIssueMatch = line.match(/^([IVXLCDM]+)\.(\s+.*)$/);
+                    if (subIssueMatch) {
+                        const prefix = subIssueMatch[1];
+                        const rest = subIssueMatch[2];
+                        
+                        const groupKey = `${prefix}.`;
+                        const existing = indexGroups.get(groupKey) || [];
+                        const nextNum = existing.length > 0 ? Math.max(...existing) + 1 : 1;
+                        const romanNum = this.toRomanNumeral(nextNum);
+                        
+                        processed = `${prefix}.${romanNum}${rest}`;
+                        
+                        // Update the group
+                        if (!indexGroups.has(groupKey)) {
+                            indexGroups.set(groupKey, []);
+                        }
+                        indexGroups.get(groupKey).push(nextNum);
+                    }
+                    
+                    // Pattern 3: Position without number "I " -> "I1 "
+                    const positionMatch = line.match(/^([IVXLCDM]+)(\s+[^IVXLCDM\d].*)$/);
+                    if (positionMatch && !existingIndices.has(positionMatch[1])) {
+                        const issue = positionMatch[1];
+                        const rest = positionMatch[2];
+                        
+                        // Check if this looks like a position (not an issue)
+                        // Heuristic: if the text doesn't end with typical issue markers like 。
+                        const isLikelyPosition = !rest.trim().endsWith('。') && 
+                                                !rest.trim().endsWith('？') && 
+                                                !rest.trim().endsWith('?');
+                        
+                        if (isLikelyPosition) {
+                            const groupKey = issue;
+                            const existing = indexGroups.get(groupKey) || [];
+                            const nextNum = existing.length > 0 ? Math.max(...existing) + 1 : 1;
+                            
+                            processed = `${issue}${nextNum}${rest}`;
+                            
+                            // Update the group
+                            if (!indexGroups.has(groupKey)) {
+                                indexGroups.set(groupKey, []);
+                            }
+                            indexGroups.get(groupKey).push(nextNum);
+                        }
+                    }
+                    
+                    processedLines.push(processed);
+                }
+                
+                return processedLines.join('\n');
+            }
+            
+            toRomanNumeral(num) {
+                const romanNumerals = [
+                    [1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'],
+                    [100, 'C'], [90, 'XC'], [50, 'L'], [40, 'XL'],
+                    [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']
+                ];
+                
+                let result = '';
+                for (const [value, numeral] of romanNumerals) {
+                    const count = Math.floor(num / value);
+                    result += numeral.repeat(count);
+                    num -= value * count;
+                }
+                return result;
+            }
+        }
+        
+        const parser = new IBISParser();
+        
+        function testParsing() {
+            const testText = `I 效果衡量。
+I1 采样现有系统中一个项目/模块/场景的统计数据作为基准。
+I1+1 可尽快获得。
+I1-1 更新到codearts就会带来变化使基准不准确。
+I1-1I 是问题需解决。
+I1-1I1 同时开启codearts和codearts+AI支持的两个项目做对比。
+II 策略
+II.I 不影响生产团队交付
+II.II 模型有更快的进步节奏
+II.III 通用最佳实践Agent厂商有更快的进步节奏
+II.I1,II.II1,II.III1 转变思维模式，使用最新AI模型和Agent来解决问题
+II.II2 工作重点为Context Engineering`;
+            
+            const lines = testText.split('\n');
+            console.log('Test parsing each line:');
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                console.log(`Line ${i+1}: "${line}"`);
+                const match = line.match(/^([IVXLCDM][^\s\u4e00-\u9fa5]*(?:\s*,\s*[IVXLCDM][^\s\u4e00-\u9fa5]*)*)\s+(.+)$/);
+                if (match) {
+                    console.log(`  ✓ Matched - Index: "${match[1]}", Label: "${match[2]}"`);
+                } else {
+                    console.log(`  ✗ No match`);
+                }
+            }
+            
+            parser.parse(testText);
+            console.log(`\nExpected 12 nodes, got ${parser.nodes.size}`);
+            console.log('Nodes:', Array.from(parser.nodes.keys()));
+        }
+        
+        function autoNumber() {
+            const input = document.getElementById('inputText').value;
+            const numbered = parser.autoNumber(input);
+            document.getElementById('outputText').value = numbered;
+            document.getElementById('inputText').value = numbered;
+            // Regenerate diagram with new numbered text
+            generateDiagram();
+        }
+        
+        async function generateDiagram() {
+            const input = document.getElementById('inputText').value;
+            const diagramDiv = document.getElementById('diagram');
+            
+            try {
+                // Auto-number first
+                const numbered = parser.autoNumber(input);
+                document.getElementById('outputText').value = numbered;
+                
+                // Generate Mermaid code
+                const mermaidCode = parser.parse(numbered);
+                console.log('Generated Mermaid code:', mermaidCode);
+                
+                // Clear previous diagram
+                diagramDiv.innerHTML = '';
+                
+                // Show debug info with node list
+                const nodeList = Array.from(parser.nodes.keys()).join(', ');
+                const debugInfo = `<div class="debug">Nodes found: ${parser.nodes.size} [${nodeList}]<br>Edges: ${parser.edges.length}</div>`;
+                diagramDiv.innerHTML = debugInfo;
+                
+                // Create a div for the diagram
+                const graphDiv = document.createElement('div');
+                graphDiv.className = 'mermaid';
+                graphDiv.textContent = mermaidCode;
+                diagramDiv.appendChild(graphDiv);
+                
+                // Render the diagram
+                await window.mermaid.run();
+                
+            } catch (error) {
+                console.error('Error generating diagram:', error);
+                diagramDiv.innerHTML = `<div class="error">Error generating diagram: ${error.message}</div>`;
+            }
+        }
+        
+        // Auto-generate on input change with debouncing
+        let debounceTimer;
+        let autoNumberTimer;
+        document.getElementById('inputText').addEventListener('input', (e) => {
+            // Auto-number incomplete patterns on newline
+            if (e.inputType === 'insertLineBreak' || e.data === '\n') {
+                clearTimeout(autoNumberTimer);
+                autoNumberTimer = setTimeout(() => {
+                    const input = document.getElementById('inputText');
+                    const cursorPos = input.selectionStart;
+                    const numbered = parser.autoNumber(input.value);
+                    if (numbered !== input.value) {
+                        input.value = numbered;
+                        // Try to maintain cursor position
+                        input.selectionStart = cursorPos;
+                        input.selectionEnd = cursorPos;
+                    }
+                }, 100);
+            }
+            
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                generateDiagram();
+            }, 1000);
+        });
+        
+        // Generate initial diagram
+        window.addEventListener('load', () => {
+            // Don't auto-number on load if text already has numbers
+            // This allows the example to demonstrate auto-numbering
+            setTimeout(generateDiagram, 100);
+        });
+    </script>
+</body>
+</html>
