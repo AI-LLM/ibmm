@@ -198,7 +198,12 @@
         • +Number = Pros (arguments for)<br>
         • -Number = Cons (arguments against)<br>
         • Use commas for multiple connections (e.g., "I1,II1 Shared solution")<br><br>
-        <strong>Auto-numbering:</strong> Use shortcuts like "I1+" or "I1-" and the system will automatically add the next available number (e.g., "I1+1", "I1-2")
+        <strong>Auto-numbering shortcuts:</strong><br>
+        • "I0" → "I1" (auto-numbered position)<br>
+        • "II.I0" → "II.I1" (auto-numbered sub-issue position)<br>
+        • "I1+" → "I1+1" (auto-numbered pro)<br>
+        • "I1-" → "I1-1" (auto-numbered con)<br>
+        • II. → II.I (auto-numbered sub-issue)
     </div>
 
     <div class="container">
@@ -207,12 +212,14 @@
             <textarea id="inputText" placeholder="Enter IBIS notation text here...
 
 Example shortcuts:
-I1+ → I1+1 (auto-numbered)
-I1- → I1-1 (auto-numbered)
-II. → II.I (auto-numbered)">I 效果衡量。
+I0 → I1 (auto-numbered position)
+II.I0 → II.I1 (auto-numbered sub-issue position)
+I1+ → I1+1 (auto-numbered pro)
+I1- → I1-1 (auto-numbered con)
+II. → II.I (auto-numbered sub-issue)">I 效果衡量。
 I1 采样现有系统中一个项目/模块/场景的统计数据作为基准。
-I1+1 可尽快获得。
-I1-1 更新到codearts就会带来变化使基准不准确。
+I1+ 可尽快获得。
+I1- 更新到codearts就会带来变化使基准不准确。
 I1-1I 是问题需解决。
 I1-1I1 同时开启codearts和codearts+AI支持的两个项目做对比。
 II 策略
@@ -220,15 +227,18 @@ II.I 不影响生产团队交付
 II.II 模型有更快的进步节奏
 II.III 通用最佳实践Agent厂商有更快的进步节奏
 II.I1,II.II1,II.III1 转变思维模式，使用最新AI模型和Agent来解决问题
-II.II2 工作重点为Context Engineering</textarea>
+II.II0 工作重点为Context Engineering
+II. 更多策略</textarea>
             <button onclick="generateDiagram()">Generate Diagram</button>
             <button onclick="autoNumber()">Auto-Number</button>
-            <button onclick="testParsing()">Test Parsing</button>
+            <button onclick="copyInputText()">Copy</button>
+            <button onclick="pasteInputText()">Paste</button>
         </div>
 
         <div class="output-section">
             <h2>Processed Text (with auto-numbering)</h2>
             <textarea id="outputText" readonly></textarea>
+            <button onclick="copyOutputText()">Copy</button>
             <div id="debug" class="debug" style="display:none;"></div>
         </div>
     </div>
@@ -629,73 +639,155 @@ II.II2 工作重点为Context Engineering</textarea>
                 const indexGroups = new Map(); // Track groups like "I1+", "I1-", "II.", etc.
 
                 for (const line of lines) {
-                    const match = line.match(/^([IVXLCDM][^\s\u4e00-\u9fa5]*)\s*.*$/);
-                    if (match) {
-                        const index = match[1].trim();
-                        existingIndices.add(index);
+                    // First check for multi-index patterns
+                    const multiMatch = line.match(/^([IVXLCDM][^\s\u4e00-\u9fa5]*(?:\s*,\s*[IVXLCDM][^\s\u4e00-\u9fa5]*)*)\s+.*$/);
+                    if (multiMatch) {
+                        const indicesStr = multiMatch[1];
+                        const indices = indicesStr.split(/\s*,\s*/).map(idx => idx.trim()).filter(idx => idx.length > 0);
 
-                        // Parse and categorize the index
-                        const parsed = this.parseIndex(index);
-                        if (parsed) {
-                            // Track pros for positions (e.g., "I1+1" goes in group "I1+")
-                            if (parsed.type === 'pro' && parsed.issue && parsed.position && parsed.number) {
-                                const groupKey = `${parsed.issue}${parsed.position}+`;
-                                if (!indexGroups.has(groupKey)) {
-                                    indexGroups.set(groupKey, []);
+                        if (indices.length > 1) {
+                            console.log(`Found multi-index: ${indicesStr} -> ${indices.join(', ')}`);
+                        }
+
+                        // Process each index in the multi-index
+                        for (const index of indices) {
+                            existingIndices.add(index);
+
+                            // Parse and categorize each index
+                            const parsed = this.parseIndex(index);
+                            if (parsed) {
+                                // Track positions for sub-issues (e.g., "II.II1" goes in group "II.II")
+                                if (parsed.type === 'position' && parsed.parentIssue && parsed.subIssue && parsed.positionNum) {
+                                    const groupKey = `${parsed.parentIssue}.${parsed.subIssue}`;
+                                    if (!indexGroups.has(groupKey)) {
+                                        indexGroups.set(groupKey, []);
+                                    }
+                                    if (parsed.positionNum !== '0') {
+                                        const num = parseInt(parsed.positionNum);
+                                        indexGroups.get(groupKey).push(num);
+                                        console.log(`Added ${index} to group ${groupKey}: position ${num}`);
+                                    }
                                 }
-                                indexGroups.get(groupKey).push(parseInt(parsed.number));
+                                // Track positions for issues (e.g., "I1" goes in group "I")
+                                else if (parsed.type === 'position' && parsed.issue && parsed.number) {
+                                    const groupKey = parsed.issue;
+                                    if (!indexGroups.has(groupKey)) {
+                                        indexGroups.set(groupKey, []);
+                                    }
+                                    if (parsed.number !== '0') {
+                                        indexGroups.get(groupKey).push(parseInt(parsed.number));
+                                    }
+                                }
+                                // Track pros and cons
+                                else if (parsed.type === 'pro' && parsed.issue && parsed.position && parsed.number) {
+                                    const groupKey = `${parsed.issue}${parsed.position}+`;
+                                    if (!indexGroups.has(groupKey)) {
+                                        indexGroups.set(groupKey, []);
+                                    }
+                                    indexGroups.get(groupKey).push(parseInt(parsed.number));
+                                }
+                                else if (parsed.type === 'con' && parsed.issue && parsed.position && parsed.number) {
+                                    const groupKey = `${parsed.issue}${parsed.position}-`;
+                                    if (!indexGroups.has(groupKey)) {
+                                        indexGroups.set(groupKey, []);
+                                    }
+                                    indexGroups.get(groupKey).push(parseInt(parsed.number));
+                                }
+                                // Track sub-issues
+                                else if (parsed.type === 'issue' && parsed.parentIssue && parsed.subIssue) {
+                                    const groupKey = `${parsed.parentIssue}.`;
+                                    if (!indexGroups.has(groupKey)) {
+                                        indexGroups.set(groupKey, []);
+                                    }
+                                    const subValue = this.parseRomanNumeral(parsed.subIssue);
+                                    indexGroups.get(groupKey).push(subValue);
+                                }
                             }
-                            // Track cons for positions (e.g., "I1-1" goes in group "I1-")
-                            else if (parsed.type === 'con' && parsed.issue && parsed.position && parsed.number) {
-                                const groupKey = `${parsed.issue}${parsed.position}-`;
-                                if (!indexGroups.has(groupKey)) {
-                                    indexGroups.set(groupKey, []);
+                        }
+                    } else {
+                        // Single index handling
+                        const match = line.match(/^([IVXLCDM][^\s\u4e00-\u9fa5]*)\s*.*$/);
+                        if (match) {
+                            const index = match[1].trim();
+                            existingIndices.add(index);
+
+                            // Reuse the same parsing logic as multi-index
+                            const parsed = this.parseIndex(index);
+                            if (parsed) {
+                                // Track positions for sub-issues (e.g., "II.II1" goes in group "II.II")
+                                if (parsed.type === 'position' && parsed.parentIssue && parsed.subIssue && parsed.positionNum) {
+                                    const groupKey = `${parsed.parentIssue}.${parsed.subIssue}`;
+                                    if (!indexGroups.has(groupKey)) {
+                                        indexGroups.set(groupKey, []);
+                                    }
+                                    if (parsed.positionNum !== '0') {
+                                        indexGroups.get(groupKey).push(parseInt(parsed.positionNum));
+                                    }
                                 }
-                                indexGroups.get(groupKey).push(parseInt(parsed.number));
-                            }
-                            // Track sub-issues (e.g., "II.I" goes in group "II.")
-                            else if (parsed.type === 'issue' && parsed.parentIssue && parsed.subIssue) {
-                                const groupKey = `${parsed.parentIssue}.`;
-                                if (!indexGroups.has(groupKey)) {
-                                    indexGroups.set(groupKey, []);
+                                // Track positions for issues (e.g., "I1" goes in group "I")
+                                else if (parsed.type === 'position' && parsed.issue && parsed.number) {
+                                    const groupKey = parsed.issue;
+                                    if (!indexGroups.has(groupKey)) {
+                                        indexGroups.set(groupKey, []);
+                                    }
+                                    if (parsed.number !== '0') {
+                                        indexGroups.get(groupKey).push(parseInt(parsed.number));
+                                    }
                                 }
-                                const subValue = this.parseRomanNumeral(parsed.subIssue);
-                                indexGroups.get(groupKey).push(subValue);
-                            }
-                            // Track positions for issues (e.g., "I1" goes in group "I")
-                            else if (parsed.type === 'position' && parsed.issue && parsed.number) {
-                                const groupKey = parsed.issue;
-                                if (!indexGroups.has(groupKey)) {
-                                    indexGroups.set(groupKey, []);
+                                // Track pros and cons
+                                else if (parsed.type === 'pro' && parsed.issue && parsed.position && parsed.number) {
+                                    const groupKey = `${parsed.issue}${parsed.position}+`;
+                                    if (!indexGroups.has(groupKey)) {
+                                        indexGroups.set(groupKey, []);
+                                    }
+                                    indexGroups.get(groupKey).push(parseInt(parsed.number));
                                 }
-                                indexGroups.get(groupKey).push(parseInt(parsed.number));
+                                else if (parsed.type === 'con' && parsed.issue && parsed.position && parsed.number) {
+                                    const groupKey = `${parsed.issue}${parsed.position}-`;
+                                    if (!indexGroups.has(groupKey)) {
+                                        indexGroups.set(groupKey, []);
+                                    }
+                                    indexGroups.get(groupKey).push(parseInt(parsed.number));
+                                }
+                                // Track sub-issues
+                                else if (parsed.type === 'issue' && parsed.parentIssue && parsed.subIssue) {
+                                    const groupKey = `${parsed.parentIssue}.`;
+                                    if (!indexGroups.has(groupKey)) {
+                                        indexGroups.set(groupKey, []);
+                                    }
+                                    const subValue = this.parseRomanNumeral(parsed.subIssue);
+                                    indexGroups.get(groupKey).push(subValue);
+                                }
                             }
                         }
                     }
                 }
 
+                // Log what we found
+                console.log('Index groups after first pass:',
+                    Array.from(indexGroups.entries()).map(([k, v]) => `${k}: [${v.join(',')}]`));
+
                 // Second pass: process lines with auto-numbering
                 for (const line of lines) {
                     let processed = line;
+                    let wasProcessed = false;
 
-                    // Match patterns that need auto-numbering
-                    // Pattern 1: "I1+" or "I1-" without number (but not "I1-1I" patterns)
-                    const proConMatch = line.match(/^([IVXLCDM]+\d+)([\+\-])(\s+.*)$/);
-                    if (proConMatch) {
-                        // Check if this already has a number or is part of a complex pattern
-                        const restText = proConMatch[3].trim();
-                        if (!/^[0-9]/.test(restText)) {
-                            const prefix = proConMatch[1];
-                            const operator = proConMatch[2];
-                            const rest = proConMatch[3];
+                    // Pattern 0a: Sub-issue position with 0 "II.II0" -> "II.II2"
+                    if (!wasProcessed) {
+                        const zeroSubPositionMatch = line.match(/^([IVXLCDM]+)\.([IVXLCDM]+)0(\s+.*)$/);
+                        if (zeroSubPositionMatch) {
+                            const parentIssue = zeroSubPositionMatch[1];
+                            const subIssue = zeroSubPositionMatch[2];
+                            const rest = zeroSubPositionMatch[3];
 
-                            const groupKey = `${prefix}${operator}`;
+                            const groupKey = `${parentIssue}.${subIssue}`;
                             const existing = indexGroups.get(groupKey) || [];
                             const nextNum = existing.length > 0 ? Math.max(...existing) + 1 : 1;
 
-                            processed = `${prefix}${operator}${nextNum}${rest}`;
+                            processed = `${parentIssue}.${subIssue}${nextNum}${rest}`;
+                            wasProcessed = true;
 
-                            // Update the group for subsequent lines
+                            // Update the group
                             if (!indexGroups.has(groupKey)) {
                                 indexGroups.set(groupKey, []);
                             }
@@ -703,9 +795,59 @@ II.II2 工作重点为Context Engineering</textarea>
                         }
                     }
 
+                    // Pattern 0b: Position with 0 "I0" -> "I1"
+                    if (!wasProcessed) {
+                        const zeroPositionMatch = line.match(/^([IVXLCDM]+)0(\s+.*)$/);
+                        if (zeroPositionMatch) {
+                            const issue = zeroPositionMatch[1];
+                            const rest = zeroPositionMatch[2];
+
+                            const groupKey = issue;
+                            const existing = indexGroups.get(groupKey) || [];
+                            const nextNum = existing.length > 0 ? Math.max(...existing) + 1 : 1;
+
+                            processed = `${issue}${nextNum}${rest}`;
+                            wasProcessed = true;
+
+                            // Update the group
+                            if (!indexGroups.has(groupKey)) {
+                                indexGroups.set(groupKey, []);
+                            }
+                            indexGroups.get(groupKey).push(nextNum);
+                        }
+                    }
+
+                    // Pattern 1: "I1+" or "I1-" without number (but not "I1-1I" patterns)
+                    if (!wasProcessed) {
+                        const proConMatch = line.match(/^([IVXLCDM]+\d+)([\+\-])(\s+.*)$/);
+                        if (proConMatch) {
+                            // Check if this already has a number or is part of a complex pattern
+                            const restText = proConMatch[3].trim();
+                            if (!/^[0-9]/.test(restText)) {
+                                const prefix = proConMatch[1];
+                                const operator = proConMatch[2];
+                                const rest = proConMatch[3];
+
+                                const groupKey = `${prefix}${operator}`;
+                                const existing = indexGroups.get(groupKey) || [];
+                                const nextNum = existing.length > 0 ? Math.max(...existing) + 1 : 1;
+
+                                processed = `${prefix}${operator}${nextNum}${rest}`;
+                                wasProcessed = true;
+
+                                // Update the group for subsequent lines
+                                if (!indexGroups.has(groupKey)) {
+                                    indexGroups.set(groupKey, []);
+                                }
+                                indexGroups.get(groupKey).push(nextNum);
+                            }
+                        }
+                    }
+
                     // Pattern 2: "II." without sub-issue number
-                    const subIssueMatch = line.match(/^([IVXLCDM]+)\.(\s+.*)$/);
-                    if (subIssueMatch) {
+                    if (!wasProcessed) {
+                        const subIssueMatch = line.match(/^([IVXLCDM]+)\.(\s+.*)$/);
+                        if (subIssueMatch) {
                         const prefix = subIssueMatch[1];
                         const rest = subIssueMatch[2];
 
@@ -714,18 +856,21 @@ II.II2 工作重点为Context Engineering</textarea>
                         const nextNum = existing.length > 0 ? Math.max(...existing) + 1 : 1;
                         const romanNum = this.toRomanNumeral(nextNum);
 
-                        processed = `${prefix}.${romanNum}${rest}`;
+                            processed = `${prefix}.${romanNum}${rest}`;
+                            wasProcessed = true;
 
-                        // Update the group
-                        if (!indexGroups.has(groupKey)) {
-                            indexGroups.set(groupKey, []);
+                            // Update the group
+                            if (!indexGroups.has(groupKey)) {
+                                indexGroups.set(groupKey, []);
+                            }
+                            indexGroups.get(groupKey).push(nextNum);
                         }
-                        indexGroups.get(groupKey).push(nextNum);
                     }
 
                     // Pattern 3: Position without number "I " -> "I1 "
-                    const positionMatch = line.match(/^([IVXLCDM]+)(\s+[^IVXLCDM\d].*)$/);
-                    if (positionMatch && !existingIndices.has(positionMatch[1])) {
+                    if (!wasProcessed) {
+                        const positionMatch = line.match(/^([IVXLCDM]+)(\s+[^IVXLCDM\d].*)$/);
+                        if (positionMatch && !existingIndices.has(positionMatch[1])) {
                         const issue = positionMatch[1];
                         const rest = positionMatch[2];
 
@@ -735,18 +880,20 @@ II.II2 工作重点为Context Engineering</textarea>
                                                 !rest.trim().endsWith('？') &&
                                                 !rest.trim().endsWith('?');
 
-                        if (isLikelyPosition) {
-                            const groupKey = issue;
-                            const existing = indexGroups.get(groupKey) || [];
-                            const nextNum = existing.length > 0 ? Math.max(...existing) + 1 : 1;
+                            if (isLikelyPosition) {
+                                const groupKey = issue;
+                                const existing = indexGroups.get(groupKey) || [];
+                                const nextNum = existing.length > 0 ? Math.max(...existing) + 1 : 1;
 
-                            processed = `${issue}${nextNum}${rest}`;
+                                processed = `${issue}${nextNum}${rest}`;
+                                wasProcessed = true;
 
-                            // Update the group
-                            if (!indexGroups.has(groupKey)) {
-                                indexGroups.set(groupKey, []);
+                                // Update the group
+                                if (!indexGroups.has(groupKey)) {
+                                    indexGroups.set(groupKey, []);
+                                }
+                                indexGroups.get(groupKey).push(nextNum);
                             }
-                            indexGroups.get(groupKey).push(nextNum);
                         }
                     }
 
@@ -775,36 +922,35 @@ II.II2 工作重点为Context Engineering</textarea>
 
         const parser = new IBISParser();
 
-        function testParsing() {
-            const testText = `I 效果衡量。
-I1 采样现有系统中一个项目/模块/场景的统计数据作为基准。
-I1+1 可尽快获得。
-I1-1 更新到codearts就会带来变化使基准不准确。
-I1-1I 是问题需解决。
-I1-1I1 同时开启codearts和codearts+AI支持的两个项目做对比。
-II 策略
-II.I 不影响生产团队交付
-II.II 模型有更快的进步节奏
-II.III 通用最佳实践Agent厂商有更快的进步节奏
-II.I1,II.II1,II.III1 转变思维模式，使用最新AI模型和Agent来解决问题
-II.II2 工作重点为Context Engineering`;
+        function copyInputText() {
+            const inputText = document.getElementById('inputText');
+            inputText.select();
+            inputText.setSelectionRange(0, 99999); // For mobile devices
+            document.execCommand('copy');
+            // Optional: Show a confirmation message
+            alert('Input text copied to clipboard!');
+        }
 
-            const lines = testText.split('\n');
-            console.log('Test parsing each line:');
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i].trim();
-                console.log(`Line ${i+1}: "${line}"`);
-                const match = line.match(/^([IVXLCDM][^\s\u4e00-\u9fa5]*(?:\s*,\s*[IVXLCDM][^\s\u4e00-\u9fa5]*)*)\s+(.+)$/);
-                if (match) {
-                    console.log(`  ✓ Matched - Index: "${match[1]}", Label: "${match[2]}"`);
-                } else {
-                    console.log(`  ✗ No match`);
-                }
-            }
+        function pasteInputText() {
+            navigator.clipboard.readText().then(text => {
+                const inputText = document.getElementById('inputText');
+                inputText.value = text;
+                // Trigger the input event to update the diagram
+                const event = new Event('input', { bubbles: true });
+                inputText.dispatchEvent(event);
+            }).catch(err => {
+                console.error('Failed to read clipboard contents: ', err);
+                alert('Failed to paste from clipboard. Please make sure you have given permission to access the clipboard.');
+            });
+        }
 
-            parser.parse(testText);
-            console.log(`\nExpected 12 nodes, got ${parser.nodes.size}`);
-            console.log('Nodes:', Array.from(parser.nodes.keys()));
+        function copyOutputText() {
+            const outputText = document.getElementById('outputText');
+            outputText.select();
+            outputText.setSelectionRange(0, 99999); // For mobile devices
+            document.execCommand('copy');
+            // Optional: Show a confirmation message
+            alert('Output text copied to clipboard!');
         }
 
         function autoNumber() {
